@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from "recharts";
 
 const API = "https://whatsapp-ai-production-9fb5.up.railway.app";
@@ -58,7 +58,7 @@ function App() {
 
           if (data.length > 0) {
             setNotifications(prev => [
-              { text: "New Lead Received" },
+              { text: "New Lead Received 🚀" },
               ...prev
             ]);
           }
@@ -94,26 +94,68 @@ function App() {
       .then(setBookings);
   }, [token]);
 
+  // ===== GROUP BOOKINGS BY DATE (NEW — NOT REMOVING ANYTHING)
+  const groupedBookings = bookings.reduce((acc, b) => {
+    const date = b.date || "Unknown";
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(b);
+    return acc;
+  }, {});
+
+  // ===== FORMAT REVENUE (FIXED CHART)
+  const chartData = revenue.map((r, i) => ({
+    name: new Date(r.date).toLocaleDateString(),
+    amount: r.amount
+  }));
+
   // ===== PAYMENT =====
   const handleUpgrade = async () => {
-    const res = await fetch(`${API}/api/create-order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: token })
-    });
+    try {
+      const res = await fetch(`${API}/api/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: token })
+      });
 
-    const order = await res.json();
+      const order = await res.json();
 
-    const options = {
-      key: "rzp_live_XXXXXXXX",
-      amount: order.amount,
-      currency: "INR",
-      name: "AI Salon",
-      order_id: order.id,
-      handler: () => window.location.reload()
-    };
+      const options = {
+        key: "rzp_live_SYhxFosHQr1vtB",
+        amount: order.amount,
+        currency: "INR",
+        name: "AI Salon",
+        order_id: order.id,
 
-    new window.Razorpay(options).open();
+        handler: async function (response) {
+          const verify = await fetch(`${API}/api/verify-payment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: token,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          });
+
+          const result = await verify.json();
+
+          if (result.success) {
+            setNotifications(prev => [
+              { text: "Payment Successful 💰" },
+              ...prev
+            ]);
+            window.location.reload();
+          }
+        }
+      };
+
+      new window.Razorpay(options).open();
+
+    } catch (err) {
+      console.log(err);
+      alert("Payment failed ❌");
+    }
   };
 
   return (
@@ -150,7 +192,6 @@ function App() {
       {/* MAIN */}
       <div className="main">
 
-        {/* TOP BAR */}
         <div className="topbar">
           <h2>{page.toUpperCase()}</h2>
           <button className="upgrade" onClick={handleUpgrade}>
@@ -167,20 +208,9 @@ function App() {
         {page==="dashboard" && (
           <>
             <div className="cards">
-              <div className="card">
-                <p>Leads</p>
-                <h2>{liveLeads.length}</h2>
-              </div>
-
-              <div className="card">
-                <p>Bookings</p>
-                <h2>{data.bookings}</h2>
-              </div>
-
-              <div className="card">
-                <p>Conversion</p>
-                <h2>{conversion}%</h2>
-              </div>
+              <div className="card"><p>Leads</p><h2>{liveLeads.length}</h2></div>
+              <div className="card"><p>Bookings</p><h2>{data.bookings}</h2></div>
+              <div className="card"><p>Conversion</p><h2>{conversion}%</h2></div>
             </div>
 
             <div className="chat-box">
@@ -190,14 +220,22 @@ function App() {
                 </div>
               ))}
             </div>
+
+            <div className="insights">
+              <h3>🧠 AI Insights</h3>
+              <p>Conversion: {conversion}%</p>
+              <p>Revenue: ₹{revenue.reduce((s,r)=>s+r.amount,0)}</p>
+              <p>Tip: Reply faster = more bookings 🚀</p>
+            </div>
           </>
         )}
 
         {/* ANALYTICS */}
         {page==="analytics" && (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={revenue}>
-              <XAxis dataKey="date"/>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name"/>
               <YAxis/>
               <Tooltip/>
               <Line type="monotone" dataKey="amount" stroke="#22c55e"/>
@@ -205,13 +243,15 @@ function App() {
           </ResponsiveContainer>
         )}
 
-        {/* CALENDAR */}
+        {/* CALENDAR (UPGRADED) */}
         {page==="calendar" && (
           <div className="calendar">
-            {bookings.map((b,i)=>(
+            {Object.keys(groupedBookings).map((date,i)=>(
               <div key={i} className="calendar-card">
-                <p>{b.phone}</p>
-                <p>{b.time}</p>
+                <h3>{date}</h3>
+                {groupedBookings[date].map((b,j)=>(
+                  <p key={j}>📞 {b.phone} — {b.time}</p>
+                ))}
               </div>
             ))}
           </div>
@@ -221,6 +261,9 @@ function App() {
         {page==="plan" && (
           <div className="card">
             <h2>{data.plan}</h2>
+            {data.expiresAt && (
+              <p>Expires: {new Date(data.expiresAt).toDateString()}</p>
+            )}
           </div>
         )}
 

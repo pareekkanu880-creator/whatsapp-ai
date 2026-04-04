@@ -193,3 +193,26 @@ body {
     transform: translateY(0);
   }
 }
+/* ===== KEEP YOUR FULL CSS AS IS ===== */
+/* ADD THESE BELOW (UPGRADE ONLY) */
+
+/* GLASS EFFECT UPGRADE */
+.card {
+  backdrop-filter: blur(12px);
+}
+
+/* PREMIUM BACKGROUND */
+.main {
+  background: radial-gradient(circle at top, #020617, #000);
+}
+
+/* CLICK FIX */
+.nav-item {
+  pointer-events: auto;
+  z-index: 10;
+}
+
+/* SMOOTH TRANSITION */
+* {
+  transition: all 0.2s ease;
+}

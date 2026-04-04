@@ -27,6 +27,12 @@ let bookings = fs.existsSync("bookings.json") ? JSON.parse(fs.readFileSync("book
 let memory = fs.existsSync("memory.json") ? JSON.parse(fs.readFileSync("memory.json")) : {};
 let revenue = fs.existsSync("revenue.json") ? JSON.parse(fs.readFileSync("revenue.json")) : [];
 
+// ===== AUTO FIX OLD BOOKINGS (IMPORTANT)
+bookings = bookings.map(b => ({
+  ...b,
+  date: b.date || new Date().toISOString().split("T")[0]
+}));
+
 function saveAll() {
   fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
   fs.writeFileSync("clients.json", JSON.stringify(clients, null, 2));
@@ -38,9 +44,7 @@ function saveAll() {
 
 // ===== WEBHOOK VERIFY =====
 app.get("/webhook", (req, res) => {
-  const verify_token = process.env.VERIFY_TOKEN;
-
-  if (req.query["hub.verify_token"] === verify_token) {
+  if (req.query["hub.verify_token"] === process.env.VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
   }
   res.sendStatus(403);
@@ -88,7 +92,7 @@ app.get("/api/client-data", (req, res) => {
   });
 });
 
-// ===== LEADS =====
+// ===== LIVE LEADS =====
 app.get("/api/live-leads", (req, res) => {
   const email = req.headers.authorization;
   res.send(leads[email] || []);
@@ -144,7 +148,11 @@ app.post("/api/verify-payment", (req, res) => {
     users[email].plan = "premium";
     users[email].expiresAt = expiry;
 
-    revenue.push({ email, amount: 999, date: new Date() });
+    revenue.push({
+      email,
+      amount: 999,
+      date: new Date()
+    });
 
     saveAll();
     return res.send({ success: true });
@@ -164,7 +172,7 @@ async function getAIReply(userId, message, client) {
     messages: [
       {
         role: "system",
-        content: `Salon assistant. Services: ${JSON.stringify(client.services)}`
+        content: `You are a smart salon assistant. Suggest booking naturally. Services: ${JSON.stringify(client.services)}`
       },
       ...memory[userId].slice(-10)
     ]
@@ -184,7 +192,6 @@ app.post("/webhook", async (req, res) => {
 
     const from = msg.from;
     const text = msg.text?.body || "";
-
     const phoneId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
     const businessId = Object.keys(clients).find(
@@ -198,14 +205,32 @@ app.post("/webhook", async (req, res) => {
     if (!leads[businessId]) leads[businessId] = [];
     leads[businessId].push({ phone: from, message: text });
 
+    // ===== BOOK FLOW =====
     if (text.toLowerCase().includes("book")) {
-      await sendMessage(client, from, "What time?");
+      await sendMessage(client, from, "📅 What date? (YYYY-MM-DD)");
       return res.sendStatus(200);
     }
 
+    // DATE DETECT
+    if (text.match(/\d{4}-\d{2}-\d{2}/)) {
+      memory[from] = memory[from] || [];
+      memory[from].bookingDate = text;
+
+      await sendMessage(client, from, "⏰ What time?");
+      return res.sendStatus(200);
+    }
+
+    // TIME DETECT → SAVE BOOKING
     if (text.match(/\d/)) {
-      bookings.push({ phone: from, time: text, businessId });
+      bookings.push({
+        phone: from,
+        time: text,
+        date: memory[from]?.bookingDate || new Date().toISOString().split("T")[0],
+        businessId
+      });
+
       saveAll();
+
       await sendMessage(client, from, "✅ Booking confirmed!");
       return res.sendStatus(200);
     }
@@ -222,6 +247,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+// ===== SEND =====
 async function sendMessage(client, to, text) {
   await axios.post(
     `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
@@ -239,5 +265,6 @@ async function sendMessage(client, to, text) {
   );
 }
 
+// ===== START =====
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("🔥 SERVER RUNNING"));
