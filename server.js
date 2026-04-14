@@ -16,14 +16,14 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET || "test"
 });
 
-// ===== SAFE JSON LOADER (UPGRADE 🔥) =====
+// ===== SAFE JSON LOADER =====
 function loadJSON(file, fallback) {
   try {
-    if (!fs.existsSync(file)) return fallback;
-    const data = fs.readFileSync(file);
-    return JSON.parse(data);
+    return fs.existsSync(file)
+      ? JSON.parse(fs.readFileSync(file))
+      : fallback;
   } catch (e) {
-    console.log(`❌ Error in ${file}, resetting...`);
+    console.log(`❌ Error loading ${file}`, e.message);
     return fallback;
   }
 }
@@ -36,20 +36,25 @@ let bookings = loadJSON("bookings.json", []);
 let memory = loadJSON("memory.json", {});
 let revenue = loadJSON("revenue.json", []);
 
+// ===== SAVE FUNCTION (SAFE) =====
+function saveAll() {
+  try {
+    fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
+    fs.writeFileSync("clients.json", JSON.stringify(clients, null, 2));
+    fs.writeFileSync("leads.json", JSON.stringify(leads, null, 2));
+    fs.writeFileSync("bookings.json", JSON.stringify(bookings, null, 2));
+    fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
+    fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
+  } catch (e) {
+    console.log("❌ SAVE ERROR:", e.message);
+  }
+}
+
 // ===== FIX OLD BOOKINGS =====
 bookings = bookings.map(b => ({
   ...b,
   date: b.date || new Date().toISOString().split("T")[0]
 }));
-
-function saveAll() {
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-  fs.writeFileSync("clients.json", JSON.stringify(clients, null, 2));
-  fs.writeFileSync("leads.json", JSON.stringify(leads, null, 2));
-  fs.writeFileSync("bookings.json", JSON.stringify(bookings, null, 2));
-  fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
-  fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
-}
 
 // ===== WEBHOOK VERIFY =====
 app.get("/webhook", (req, res) => {
@@ -162,20 +167,25 @@ app.post("/api/verify-payment", (req, res) => {
   res.send({ success: false });
 });
 
-// ===== SMART AI =====
+// ===== AI ENGINE =====
 function getSmartAI(userId, message) {
-  if (!memory[userId]) {
-    memory[userId] = { step: "start", context: {}, history: [] };
+  if (!memory[userId] || typeof memory[userId] !== "object") {
+    memory[userId] = {
+      step: "start",
+      context: {},
+      history: []
+    };
   }
 
   const user = memory[userId];
   const msg = message.toLowerCase();
+  user.history.push(msg);
 
-  const intent = /book/.test(msg)
+  const intent = /book|appointment/.test(msg)
     ? "booking"
-    : /price/.test(msg)
+    : /price|cost/.test(msg)
     ? "pricing"
-    : /time/.test(msg)
+    : /time|hours/.test(msg)
     ? "timing"
     : /hi|hello/.test(msg)
     ? "greeting"
@@ -185,10 +195,6 @@ function getSmartAI(userId, message) {
     user.step = "booking";
 
     if (!user.context.date) {
-      if (msg.match(/\d{4}-\d{2}-\d{2}/)) {
-        user.context.date = message;
-        return "Nice 👍 What time?";
-      }
       return "📅 Enter date (YYYY-MM-DD)";
     }
 
@@ -204,47 +210,63 @@ function getSmartAI(userId, message) {
 
       saveAll();
 
-      return `✅ Booked\n${user.context.date} ${user.context.time}`;
+      return `✅ Booked on ${user.context.date} at ${user.context.time}`;
     }
   }
 
   if (intent === "pricing") return "Haircut ₹300, Facial ₹800";
-  if (intent === "timing") return "10 AM - 8 PM";
-  if (intent === "greeting") return "Hey 👋 How can I help?";
+  if (intent === "timing") return "Open 10AM - 8PM";
+  if (intent === "greeting") return "Hey 👋 How can I help you?";
 
-  return "Type 'book' to start booking";
+  return "Type 'book' to book appointment";
 }
-// ===== WHATSAPP =====
+
+// ===== FINAL WEBHOOK (CRASH-PROOF) =====
 app.post("/webhook", async (req, res) => {
-  // your webhook code
-});
-
-
-// ===== 🧪 TEST ROUTE (ADD HERE) =====
-app.get("/test-send", async (req, res) => {
   try {
-    const response = await axios.post(
-      `https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages`,
+    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!msg) return res.sendStatus(200);
+
+    const from = msg.from;
+    const text = msg.text?.body || "";
+
+    const phoneId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+
+    let businessId = Object.keys(clients).find(
+      key => String(clients[key].phone_number_id) === String(phoneId)
+    );
+
+    if (!businessId) {
+      console.log("❌ No business match");
+      return res.sendStatus(200);
+    }
+
+    const client = clients[businessId];
+
+    const reply = getSmartAI(from, text);
+
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
       {
         messaging_product: "whatsapp",
-        to: "YOUR_PERSONAL_NUMBER_WITH_COUNTRY_CODE",
-        text: { body: "Test message 🚀" }
+        to: from,
+        text: { body: reply }
       },
       {
         headers: {
-          Authorization: `Bearer YOUR_TOKEN`,
+          Authorization: `Bearer ${client.token}`,
           "Content-Type": "application/json"
         }
       }
     );
 
-    res.send("✅ Message sent");
+    res.sendStatus(200);
+
   } catch (e) {
-    console.log("ERROR:", e.response?.data || e.message);
-    res.send("❌ Failed");
+    console.log("❌ WEBHOOK ERROR:", e.response?.data || e.message);
+    res.sendStatus(200);
   }
 });
-
 
 // ===== START =====
 const PORT = process.env.PORT || 3000;
