@@ -16,13 +16,25 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET || "test"
 });
 
+// ===== SAFE JSON LOADER (UPGRADE 🔥) =====
+function loadJSON(file, fallback) {
+  try {
+    if (!fs.existsSync(file)) return fallback;
+    const data = fs.readFileSync(file);
+    return JSON.parse(data);
+  } catch (e) {
+    console.log(`❌ Error in ${file}, resetting...`);
+    return fallback;
+  }
+}
+
 // ===== LOAD FILES =====
-let users = fs.existsSync("users.json") ? JSON.parse(fs.readFileSync("users.json")) : {};
-let clients = fs.existsSync("clients.json") ? JSON.parse(fs.readFileSync("clients.json")) : {};
-let leads = fs.existsSync("leads.json") ? JSON.parse(fs.readFileSync("leads.json")) : {};
-let bookings = fs.existsSync("bookings.json") ? JSON.parse(fs.readFileSync("bookings.json")) : [];
-let memory = fs.existsSync("memory.json") ? JSON.parse(fs.readFileSync("memory.json")) : {};
-let revenue = fs.existsSync("revenue.json") ? JSON.parse(fs.readFileSync("revenue.json")) : [];
+let users = loadJSON("users.json", {});
+let clients = loadJSON("clients.json", {});
+let leads = loadJSON("leads.json", {});
+let bookings = loadJSON("bookings.json", []);
+let memory = loadJSON("memory.json", {});
+let revenue = loadJSON("revenue.json", []);
 
 // ===== FIX OLD BOOKINGS =====
 bookings = bookings.map(b => ({
@@ -115,7 +127,7 @@ app.get("/api/revenue", (req, res) => {
   res.send(revenue);
 });
 
-// ===== PAYMENT (UNCHANGED — SAFE) =====
+// ===== PAYMENT =====
 app.post("/api/create-order", async (req, res) => {
   const order = await razorpay.orders.create({
     amount: 99900,
@@ -150,40 +162,34 @@ app.post("/api/verify-payment", (req, res) => {
   res.send({ success: false });
 });
 
-// ===== 🔥 SMART AI ENGINE (FINAL) =====
+// ===== SMART AI =====
 function getSmartAI(userId, message) {
-  if (!memory[userId] || typeof memory[userId] !== "object") {
-    memory[userId] = {
-      step: "start",
-      context: {},
-      history: []
-    };
+  if (!memory[userId]) {
+    memory[userId] = { step: "start", context: {}, history: [] };
   }
 
   const user = memory[userId];
   const msg = message.toLowerCase();
-  user.history.push(msg);
 
-  const intent = /book|appointment|schedule/.test(msg)
+  const intent = /book/.test(msg)
     ? "booking"
-    : /price|cost|charge/.test(msg)
+    : /price/.test(msg)
     ? "pricing"
-    : /time|open|hours/.test(msg)
+    : /time/.test(msg)
     ? "timing"
-    : /hi|hello|hey/.test(msg)
+    : /hi|hello/.test(msg)
     ? "greeting"
     : "unknown";
 
-  // ===== BOOKING =====
   if (intent === "booking" || user.step === "booking") {
     user.step = "booking";
 
     if (!user.context.date) {
       if (msg.match(/\d{4}-\d{2}-\d{2}/)) {
         user.context.date = message;
-        return "Nice 👍 What time would you prefer?";
+        return "Nice 👍 What time?";
       }
-      return "📅 Please enter date (YYYY-MM-DD)";
+      return "📅 Enter date (YYYY-MM-DD)";
     }
 
     if (!user.context.time) {
@@ -198,76 +204,47 @@ function getSmartAI(userId, message) {
 
       saveAll();
 
-      return `✨ Booking Confirmed!\n📅 ${user.context.date}\n⏰ ${user.context.time}`;
+      return `✅ Booked\n${user.context.date} ${user.context.time}`;
     }
   }
 
-  // ===== PRICING =====
-  if (intent === "pricing") {
-    return "💇 Haircut ₹300\n💆 Facial ₹800\nWould you like to book?";
-  }
+  if (intent === "pricing") return "Haircut ₹300, Facial ₹800";
+  if (intent === "timing") return "10 AM - 8 PM";
+  if (intent === "greeting") return "Hey 👋 How can I help?";
 
-  // ===== TIMING =====
-  if (intent === "timing") {
-    return "We are open from 10 AM to 8 PM 😊";
-  }
-
-  // ===== GREETING =====
-  if (intent === "greeting") {
-    return "Hey 👋 Welcome! I can help you with booking, pricing or services.";
-  }
-
-  // ===== DEFAULT =====
-  return "Hi 😊 You can type 'book' to book an appointment or ask for prices.";
+  return "Type 'book' to start booking";
 }
-
 // ===== WHATSAPP =====
 app.post("/webhook", async (req, res) => {
+  // your webhook code
+});
+
+
+// ===== 🧪 TEST ROUTE (ADD HERE) =====
+app.get("/test-send", async (req, res) => {
   try {
-    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!msg) return res.sendStatus(200);
-
-    const from = msg.from;
-    const text = msg.text?.body || "";
-
-    const phoneId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-
-    const businessId = Object.keys(clients).find(
-      key => clients[key].phone_number_id === phoneId
-    );
-
-    if (!businessId) return res.sendStatus(200);
-
-    const client = clients[businessId];
-
-    if (!leads[businessId]) leads[businessId] = [];
-    leads[businessId].push({ phone: from, message: text });
-
-    const reply = getSmartAI(from, text);
-
-    await axios.post(
-      `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages`,
       {
         messaging_product: "whatsapp",
-        to: from,
-        text: { body: reply }
+        to: "YOUR_PERSONAL_NUMBER_WITH_COUNTRY_CODE",
+        text: { body: "Test message 🚀" }
       },
       {
         headers: {
-          Authorization: `Bearer ${client.token}`,
+          Authorization: `Bearer YOUR_TOKEN`,
           "Content-Type": "application/json"
         }
       }
     );
 
-    saveAll();
-    res.sendStatus(200);
-
+    res.send("✅ Message sent");
   } catch (e) {
-    console.log(e);
-    res.sendStatus(500);
+    console.log("ERROR:", e.response?.data || e.message);
+    res.send("❌ Failed");
   }
 });
+
 
 // ===== START =====
 const PORT = process.env.PORT || 3000;
