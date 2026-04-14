@@ -1,18 +1,12 @@
 {
-  "pareek123@gmail.com  ": {
+  "pareek123@gmail.com": {
     "name": "My Salon",
     "services": {
       "haircut": 300,
       "facial": 800,
       "beard": 150
     },
-    "token": "EAAVZCAm8YhMQBRM57wSGrIEbk9kxdZBNttDFbmbWsLXYXuP09paC9zNRx33FeYK4zleAknp1bZClFJeFF3WzcgqvbbUzry7DOiqQKbmfSfSAvc3GbpwcHq5ZC3WjrM2xqqgln2PZB9p8izuEbGWHt2X5OLHKYRZCGAc4mJ1ZAefBSYgUpCr8bXOUanHcmwi4t5TPthddMZBONB8wZBgi9Y4UI0FNpvi0xeYhAO0ZCGZA2XmxhnadLsrNsMF1lumZBhBYHmjIJs23cavU3m0xqIAkP6rjcvRTVZBvIdMppTgZDZD",
+    "token": "EAAVZCAm8YhMQBRP4bd1AWwRROJ3muVMZBogBehm599gpskImgt3BhkaN2fGJHMuZAKe1htUCb8M4s01Sn2pydpQa36vFQ3ZCfXVie9NoPQWqjyqOHQStnCzZCgZA98sfZAn4pTzpmIGII9PWSdQstZCtCO2kCW3yIgow5uMjkrJgqv3EtJ9QhBzSnhFLeCuyoUsXiJjR2KPPQsHEp24AA9ZAaxMRcL8ZA4adZAqEP7tbh1EP1eab8oD2xErLJAIDYuHPmV9JONcvf6rWMzVfFuaPO5rRgDNwASLVaNXdQZDZD"",
     "phone_number_id": "1072252642630975"
-  }
-  {
-  "default": {
-    "email": "client1@gmail.com",
-    "phone_number_id":"1072252642630975" ,
-    "token": "EAAVZCAm8YhMQBRP4bd1AWwRROJ3muVMZBogBehm599gpskImgt3BhkaN2fGJHMuZAKe1htUCb8M4s01Sn2pydpQa36vFQ3ZCfXVie9NoPQWqjyqOHQStnCzZCgZA98sfZAn4pTzpmIGII9PWSdQstZCtCO2kCW3yIgow5uMjkrJgqv3EtJ9QhBzSnhFLeCuyoUsXiJjR2KPPQsHEp24AA9ZAaxMRcL8ZA4adZAqEP7tbh1EP1eab8oD2xErLJAIDYuHPmV9JONcvf6rWMzVfFuaPO5rRgDNwASLVaNXdQZDZD"
   }
 }
