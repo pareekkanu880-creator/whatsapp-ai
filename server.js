@@ -10,6 +10,42 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
+// ===== META REQUIRED ROUTES (DO NOT REMOVE) =====
+
+// Root check (Railway health)
+app.get("/", (req, res) => {
+  res.send("🚀 WhatsApp AI SaaS Running");
+});
+
+// Privacy Policy
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <h1>Privacy Policy</h1>
+    <p>This application uses WhatsApp Cloud API to send and receive messages.</p>
+    <p>No personal user data is stored permanently.</p>
+    <p>All data is used only for automation and service improvement.</p>
+  `);
+});
+
+// Terms of Service
+app.get("/terms", (req, res) => {
+  res.send(`
+    <h1>Terms of Service</h1>
+    <p>By using this service, you agree to use it responsibly.</p>
+    <p>This system automates WhatsApp communication.</p>
+    <p>We are not responsible for misuse.</p>
+  `);
+});
+
+// Data Deletion
+app.get("/delete", (req, res) => {
+  res.send(`
+    <h1>Data Deletion</h1>
+    <p>To delete your data, contact us at your registered email.</p>
+    <p>We will remove your data within 48 hours.</p>
+  `);
+});
+
 // ===== INIT =====
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "test",
