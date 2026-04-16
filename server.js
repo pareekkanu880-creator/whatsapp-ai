@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
+const OpenAI = require("openai");
 const fs = require("fs");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
@@ -10,40 +11,9 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
-// ===== META REQUIRED ROUTES (DO NOT REMOVE) =====
-
-// Root check (Railway health)
-app.get("/", (req, res) => {
-  res.send("🚀 WhatsApp AI SaaS Running");
-});
-
-// Privacy Policy
-app.get("/privacy", (req, res) => {
-  res.send(`
-    <h1>Privacy Policy</h1>
-    <p>This application uses WhatsApp Cloud API to send and receive messages.</p>
-    <p>No personal user data is stored permanently.</p>
-    <p>All data is used only for automation and service improvement.</p>
-  `);
-});
-
-// Terms of Service
-app.get("/terms", (req, res) => {
-  res.send(`
-    <h1>Terms of Service</h1>
-    <p>By using this service, you agree to use it responsibly.</p>
-    <p>This system automates WhatsApp communication.</p>
-    <p>We are not responsible for misuse.</p>
-  `);
-});
-
-// Data Deletion
-app.get("/delete", (req, res) => {
-  res.send(`
-    <h1>Data Deletion</h1>
-    <p>To delete your data, contact us at your registered email.</p>
-    <p>We will remove your data within 48 hours.</p>
-  `);
+// ===== OPENAI INIT =====
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 // ===== INIT =====
@@ -72,7 +42,7 @@ let bookings = loadJSON("bookings.json", []);
 let memory = loadJSON("memory.json", {});
 let revenue = loadJSON("revenue.json", []);
 
-// ===== SAVE FUNCTION (SAFE) =====
+// ===== SAVE FUNCTION =====
 function saveAll() {
   try {
     fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
@@ -91,6 +61,40 @@ bookings = bookings.map(b => ({
   ...b,
   date: b.date || new Date().toISOString().split("T")[0]
 }));
+
+// ===== ROOT CHECK =====
+app.get("/", (req, res) => {
+  res.send("🚀 WhatsApp AI SaaS Running");
+});
+
+// ===== PRIVACY =====
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <h1>Privacy Policy</h1>
+    <p>This application uses WhatsApp Cloud API to send and receive messages.</p>
+    <p>No personal user data is stored permanently.</p>
+    <p>All data is used only for automation and service improvement.</p>
+  `);
+});
+
+// ===== TERMS =====
+app.get("/terms", (req, res) => {
+  res.send(`
+    <h1>Terms of Service</h1>
+    <p>By using this service, you agree to use it responsibly.</p>
+    <p>This system automates WhatsApp communication.</p>
+    <p>We are not responsible for misuse.</p>
+  `);
+});
+
+// ===== DELETE =====
+app.get("/delete", (req, res) => {
+  res.send(`
+    <h1>Data Deletion</h1>
+    <p>To delete your data, contact us at your registered email.</p>
+    <p>We will remove your data within 48 hours.</p>
+  `);
+});
 
 // ===== WEBHOOK VERIFY =====
 app.get("/webhook", (req, res) => {
@@ -203,61 +207,38 @@ app.post("/api/verify-payment", (req, res) => {
   res.send({ success: false });
 });
 
-// ===== AI ENGINE =====
+// ===== OLD AI (UNCHANGED, NOT USED) =====
 function getSmartAI(userId, message) {
-  if (!memory[userId] || typeof memory[userId] !== "object") {
-    memory[userId] = {
-      step: "start",
-      context: {},
-      history: []
-    };
-  }
-
-  const user = memory[userId];
-  const msg = message.toLowerCase();
-  user.history.push(msg);
-
-  const intent = /book|appointment/.test(msg)
-    ? "booking"
-    : /price|cost/.test(msg)
-    ? "pricing"
-    : /time|hours/.test(msg)
-    ? "timing"
-    : /hi|hello/.test(msg)
-    ? "greeting"
-    : "unknown";
-
-  if (intent === "booking" || user.step === "booking") {
-    user.step = "booking";
-
-    if (!user.context.date) {
-      return "📅 Enter date (YYYY-MM-DD)";
-    }
-
-    if (!user.context.time) {
-      user.context.time = message;
-
-      bookings.push({
-        phone: userId,
-        date: user.context.date,
-        time: user.context.time,
-        businessId: userId
-      });
-
-      saveAll();
-
-      return `✅ Booked on ${user.context.date} at ${user.context.time}`;
-    }
-  }
-
-  if (intent === "pricing") return "Haircut ₹300, Facial ₹800";
-  if (intent === "timing") return "Open 10AM - 8PM";
-  if (intent === "greeting") return "Hey 👋 How can I help you?";
-
-  return "Type 'book' to book appointment";
+  return "Legacy AI disabled";
 }
 
-// ===== FINAL WEBHOOK (CRASH-PROOF) =====
+// ===== OPENAI AI =====
+async function getOpenAIReply(message) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a smart WhatsApp business assistant for a salon. Talk naturally, help users book appointments, answer questions, and guide them."
+        },
+        {
+          role: "user",
+          content: message
+        }
+      ]
+    });
+
+    return response.choices[0].message.content;
+
+  } catch (e) {
+    console.log("❌ OpenAI Error:", e.response?.data || e.message);
+    return "⚠️ AI error, try again later";
+  }
+}
+
+// ===== WEBHOOK =====
 app.post("/webhook", async (req, res) => {
   try {
     const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -266,10 +247,12 @@ app.post("/webhook", async (req, res) => {
     const from = msg.from;
     const text = msg.text?.body || "";
 
-    const phoneId = req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+    const phoneId =
+      req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
     let businessId = Object.keys(clients).find(
-      key => String(clients[key].phone_number_id) === String(phoneId)
+      key =>
+        String(clients[key].phone_number_id) === String(phoneId)
     );
 
     if (!businessId) {
@@ -279,7 +262,8 @@ app.post("/webhook", async (req, res) => {
 
     const client = clients[businessId];
 
-    const reply = getSmartAI(from, text);
+    // 🔥 ONLY OPENAI RESPONSE
+    const reply = await getOpenAIReply(text);
 
     await axios.post(
       `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
@@ -290,7 +274,7 @@ app.post("/webhook", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${client.token}`,
           "Content-Type": "application/json"
         }
       }
