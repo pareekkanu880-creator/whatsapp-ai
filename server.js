@@ -238,25 +238,33 @@ async function createPaymentLink(amount, phone) {
 // =====================================================
 
 function detectIntent(message) {
-  const msg = message.toLowerCase();
+  const msg = message.toLowerCase().trim();
 
-  if (/book|booking|appointment|schedule/.test(msg))
+  // Booking intent
+  if (/book|booking|appointment|schedule|reserve|slot/.test(msg))
     return "booking";
 
-  if (/price|pricing|cost|rate|charge/.test(msg))
+  // Pricing intent
+  if (/price|pricing|prices|cost|rate|charge|pricings/.test(msg))
     return "pricing";
 
-  if (/time|timing|timings|open|close|hours/.test(msg))
+  // Timing intent
+  if (/time|timing|timings|hours|open|close/.test(msg))
     return "timing";
 
-  if (/hello|hi|hey|hii/.test(msg))
+  // Service recommendation
+  if (
+    /service|services|suggestion|suggest|recommend|recommendation|service suggestion/.test(msg)
+  )
+    return "recommendation";
+
+  // Specific services
+  if (/haircut|hair cut|beard|facial|spa|massage/.test(msg))
+    return "specific_service";
+
+  // Greeting
+  if (/hi|hii|hello|hey/.test(msg))
     return "greeting";
-
-  if (/tired|stress|sad|low/.test(msg))
-    return "emotion_low";
-
-  if (/party|event|date night/.test(msg))
-    return "event_need";
 
   return "general";
 }
