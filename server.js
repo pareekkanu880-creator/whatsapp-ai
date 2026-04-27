@@ -241,32 +241,40 @@ function detectIntent(message) {
   const msg = message.toLowerCase().trim();
 
   // Booking intent
-  if (/book|booking|appointment|schedule|reserve|slot/.test(msg))
+  if (/book|booking|appointment|schedule|reserve|slot/.test(msg)) {
     return "booking";
+  }
 
   // Pricing intent
-  if (/price|pricing|prices|cost|rate|charge|pricings/.test(msg))
+  if (/price|pricing|prices|cost|rate|charge|pricings/.test(msg)) {
     return "pricing";
+  }
 
   // Timing intent
-  if (/time|timing|timings|hours|open|close/.test(msg))
+  if (/time|timing|timings|hours|open|close/.test(msg)) {
     return "timing";
+  }
 
   // Service recommendation
   if (
-    /service|services|suggestion|suggest|recommend|recommendation|service suggestion/.test(msg)
-  )
+    /service|services|suggestion|suggest|recommend|recommendation|recommendations|service suggestion/.test(msg)
+  ) {
     return "recommendation";
+  }
 
   // Specific services
-  if (/haircut|hair cut|beard|facial|spa|massage/.test(msg))
+  if (
+    /haircut|hair cut|beard|facial|spa|massage|grooming|beard styling/.test(msg)
+  ) {
     return "specific_service";
+  }
 
   // Greeting
-  if (/hi|hii|hello|hey/.test(msg))
+  if (/hi|hii|hello|hey/.test(msg)) {
     return "greeting";
+  }
 
-  return "general";
+  return "default";
 }
 
 function extractName(message) {
