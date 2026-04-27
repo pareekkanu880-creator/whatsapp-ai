@@ -245,41 +245,46 @@ function detectIntent(message) {
     return "greeting";
   }
 
-  // Booking
+  // YES confirmation → booking
+  if (/^yes$|^yeah$|^yep$|^ok$|^okay$|^sure$/.test(msg)) {
+    return "booking";
+  }
+
+  // Booking intent
   if (/book|booking|appointment|schedule|reserve|slot/.test(msg)) {
     return "booking";
   }
 
-  // Pricing
+  // Pricing intent
   if (/price|pricing|prices|cost|rate|charge|pricings/.test(msg)) {
     return "pricing";
   }
 
-  // Timing
+  // Timing intent
   if (/time|timing|timings|hours|open|close/.test(msg)) {
     return "timing";
   }
 
-  // Recommendation
+  // Recommendation intent
   if (
-    /service suggestion|recommendations|recommendation|recommend|suggestion|suggest|services|service/.test(msg)
+    /recommendation|recommendations|recommend|suggestion|suggest|service suggestion/.test(msg)
   ) {
     return "recommendation";
   }
 
-  // Specific Service
+  // Specific service intent
   if (
     /haircut|hair cut|beard|facial|spa|massage|grooming|beard styling/.test(msg)
   ) {
     return "specific_service";
   }
 
-  // Emotional
+  // Emotional intent
   if (/tired|stress|sad|low/.test(msg)) {
     return "emotion_low";
   }
 
-  // Event Need
+  // Event-based selling intent
   if (/party|event|date night|wedding|meeting/.test(msg)) {
     return "event_need";
   }
