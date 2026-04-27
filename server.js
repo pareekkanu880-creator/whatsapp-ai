@@ -1,7 +1,6 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
-const OpenAI = require("openai");
 const fs = require("fs");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
@@ -11,30 +10,30 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
-// ===== OPENAI INIT =====
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// =====================================================
+// INIT
+// =====================================================
 
-// ===== INIT =====
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "test",
   key_secret: process.env.RAZORPAY_KEY_SECRET || "test"
 });
 
-// ===== SAFE JSON LOADER =====
+// =====================================================
+// SAFE JSON LOAD
+// =====================================================
+
 function loadJSON(file, fallback) {
   try {
     return fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file))
       : fallback;
   } catch (e) {
-    console.log(`❌ Error loading ${file}`, e.message);
+    console.log(`❌ Error loading ${file}:`, e.message);
     return fallback;
   }
 }
 
-// ===== LOAD FILES =====
 let users = loadJSON("users.json", {});
 let clients = loadJSON("clients.json", {});
 let leads = loadJSON("leads.json", {});
@@ -42,7 +41,10 @@ let bookings = loadJSON("bookings.json", []);
 let memory = loadJSON("memory.json", {});
 let revenue = loadJSON("revenue.json", []);
 
-// ===== SAVE FUNCTION =====
+// =====================================================
+// SAVE
+// =====================================================
+
 function saveAll() {
   try {
     fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
@@ -56,238 +58,531 @@ function saveAll() {
   }
 }
 
-// ===== FIX OLD BOOKINGS =====
-bookings = bookings.map(b => ({
-  ...b,
-  date: b.date || new Date().toISOString().split("T")[0]
-}));
+// =====================================================
+// BASIC ROUTES
+// =====================================================
 
-// ===== ROOT CHECK =====
 app.get("/", (req, res) => {
   res.send("🚀 WhatsApp AI SaaS Running");
 });
 
-// ===== PRIVACY =====
 app.get("/privacy", (req, res) => {
-  res.send(`
-    <h1>Privacy Policy</h1>
-    <p>This application uses WhatsApp Cloud API to send and receive messages.</p>
-    <p>No personal user data is stored permanently.</p>
-    <p>All data is used only for automation and service improvement.</p>
-  `);
+  res.send("Privacy Policy");
 });
 
-// ===== TERMS =====
 app.get("/terms", (req, res) => {
-  res.send(`
-    <h1>Terms of Service</h1>
-    <p>By using this service, you agree to use it responsibly.</p>
-    <p>This system automates WhatsApp communication.</p>
-    <p>We are not responsible for misuse.</p>
-  `);
+  res.send("Terms of Service");
 });
 
-// ===== DELETE =====
 app.get("/delete", (req, res) => {
-  res.send(`
-    <h1>Data Deletion</h1>
-    <p>To delete your data, contact us at your registered email.</p>
-    <p>We will remove your data within 48 hours.</p>
-  `);
+  res.send("Data Deletion Page");
 });
 
-// ===== WEBHOOK VERIFY =====
+// =====================================================
+// WEBHOOK VERIFY
+// =====================================================
+
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === process.env.VERIFY_TOKEN) {
     return res.send(req.query["hub.challenge"]);
   }
+
   res.sendStatus(403);
 });
 
-// ===== AUTH =====
-app.post("/api/register", (req, res) => {
-  const { email, password } = req.body;
+// =====================================================
+// REGISTER (MULTI BUSINESS)
+// =====================================================
 
-  users[email] = { password, plan: "free", expiresAt: null };
+app.post("/api/register", (req, res) => {
+  const {
+    email,
+    password,
+    businessName,
+    services
+  } = req.body;
+
+  users[email] = {
+    password,
+    plan: "free",
+    expiresAt: null
+  };
 
   clients[email] = {
-    name: "My Salon",
-    services: { haircut: 300, facial: 800 },
+    name: businessName || "My Salon",
+    services: services || {
+      haircut: 300,
+      facial: 800,
+      beard: 200
+    },
     token: process.env.WHATSAPP_TOKEN,
     phone_number_id: process.env.PHONE_NUMBER_ID
   };
 
   saveAll();
-  res.send({ message: "Registered" });
+
+  res.send({
+    success: true,
+    message: "Registered successfully"
+  });
 });
+
+// =====================================================
+// LOGIN
+// =====================================================
 
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body;
 
   if (!users[email] || users[email].password !== password) {
-    return res.send({ error: "Invalid login" });
+    return res.send({
+      success: false,
+      error: "Invalid login"
+    });
   }
 
-  res.send({ token: email });
+  res.send({
+    success: true,
+    token: email
+  });
 });
 
-// ===== DASHBOARD =====
+// =====================================================
+// DASHBOARD ANALYTICS
+// =====================================================
+
 app.get("/api/client-data", (req, res) => {
   const email = req.headers.authorization;
 
   const userLeads = leads[email] || [];
-  const userBookings = bookings.filter(b => b.businessId === email);
+  const userBookings = bookings.filter(
+    (b) => b.businessId === email
+  );
 
-  res.send({
-    total: userLeads.length,
-    bookings: userBookings.length,
-    plan: users[email]?.plan || "free",
-    expiresAt: users[email]?.expiresAt
-  });
-});
+  const userRevenue = revenue.filter(
+    (r) => r.businessId === email
+  );
 
-app.get("/api/live-leads", (req, res) => {
-  const email = req.headers.authorization;
-  res.send(leads[email] || []);
-});
-
-app.get("/api/bookings", (req, res) => {
-  const email = req.headers.authorization;
-  res.send(bookings.filter(b => b.businessId === email));
-});
-
-app.get("/api/conversion", (req, res) => {
-  const email = req.headers.authorization;
-
-  const totalLeads = (leads[email] || []).length;
-  const totalBookings = bookings.filter(b => b.businessId === email).length;
+  const totalRevenue = userRevenue.reduce(
+    (sum, item) => sum + item.amount,
+    0
+  );
 
   const conversion =
-    totalLeads === 0 ? 0 : ((totalBookings / totalLeads) * 100).toFixed(1);
+    userLeads.length === 0
+      ? 0
+      : (
+          (userBookings.length / userLeads.length) *
+          100
+        ).toFixed(1);
 
-  res.send({ conversion });
-});
-
-app.get("/api/revenue", (req, res) => {
-  res.send(revenue);
-});
-
-// ===== PAYMENT =====
-app.post("/api/create-order", async (req, res) => {
-  const order = await razorpay.orders.create({
-    amount: 99900,
-    currency: "INR"
+  res.send({
+    leads: userLeads.length,
+    bookings: userBookings.length,
+    revenue: totalRevenue,
+    conversion,
+    plan: users[email]?.plan || "free"
   });
-  res.send(order);
 });
 
-app.post("/api/verify-payment", (req, res) => {
-  const { email, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+// =====================================================
+// SMART SLOT SYSTEM
+// =====================================================
 
-  const body = razorpay_order_id + "|" + razorpay_payment_id;
+function getAvailableSlots(date, businessId) {
+  const allSlots = [
+    "10:00",
+    "12:00",
+    "14:00",
+    "16:00",
+    "18:00"
+  ];
 
-  const expected = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "test")
-    .update(body)
-    .digest("hex");
+  const bookedSlots = bookings
+    .filter(
+      (b) =>
+        b.businessId === businessId &&
+        b.date === date
+    )
+    .map((b) => b.time);
 
-  if (expected === razorpay_signature) {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + 30);
-
-    users[email].plan = "premium";
-    users[email].expiresAt = expiry;
-
-    revenue.push({ email, amount: 999, date: new Date() });
-
-    saveAll();
-    return res.send({ success: true });
-  }
-
-  res.send({ success: false });
-});
-
-// ===== OLD AI (UNCHANGED, NOT USED) =====
-function getSmartAI(userId, message) {
-  return "Legacy AI disabled";
+  return allSlots.filter(
+    (slot) => !bookedSlots.includes(slot)
+  );
 }
 
-// ===== OPENAI AI =====
-async function getOpenAIReply(message) {
+// =====================================================
+// PAYMENT LINK
+// =====================================================
+
+async function createPaymentLink(amount, phone) {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a smart WhatsApp business assistant for a salon. Talk naturally, help users book appointments, answer questions, and guide them."
-        },
-        {
-          role: "user",
-          content: message
-        }
-      ]
+    const link = await razorpay.paymentLink.create({
+      amount: amount * 100,
+      currency: "INR",
+      description: "Booking Payment",
+      customer: {
+        contact: phone
+      }
     });
 
-    return response.choices[0].message.content;
-
+    return link.short_url;
   } catch (e) {
-    console.log("❌ OpenAI Error:", e.response?.data || e.message);
-    return "⚠️ AI error, try again later";
+    console.log("❌ PAYMENT ERROR:", e.message);
+    return null;
   }
 }
 
-// ===== WEBHOOK =====
+// =====================================================
+// SMART HELPERS
+// =====================================================
+
+function detectIntent(message) {
+  const msg = message.toLowerCase();
+
+  if (/book|appointment|schedule/.test(msg))
+    return "booking";
+
+  if (/price|cost|rate|charge/.test(msg))
+    return "pricing";
+
+  if (/time|open|close|hours/.test(msg))
+    return "timing";
+
+  if (/hello|hi|hey/.test(msg))
+    return "greeting";
+
+  if (/tired|stress|sad|low/.test(msg))
+    return "emotion_low";
+
+  if (/party|event|date night/.test(msg))
+    return "event_need";
+
+  return "general";
+}
+
+function extractName(message) {
+  const match = message.match(
+    /my name is (\w+)/i
+  );
+
+  return match ? match[1] : null;
+}
+
+function detectInterest(message) {
+  const msg = message.toLowerCase();
+
+  if (/book|appointment|tomorrow|today/.test(msg))
+    return "high";
+
+  if (/price|details|cost/.test(msg))
+    return "medium";
+
+  return "low";
+}
+
+// =====================================================
+// INTERNAL SMART AI ENGINE (NO OPENAI)
+// =====================================================
+
+function getSmartAI(userId, message, businessId) {
+  if (
+    !memory[userId] ||
+    typeof memory[userId] !== "object"
+  ) {
+    memory[userId] = {
+      history: [],
+      profile: {
+        name: null,
+        preferences: [],
+        lastService: null
+      },
+      behavior: {
+        visits: 0,
+        interestLevel: "low",
+        lastSeen: null
+      },
+      bookingFlow: {
+        waitingForSlot: false
+      }
+    };
+  }
+
+  const user = memory[userId];
+  const client = clients[businessId];
+  const msg = message.trim();
+  const intent = detectIntent(msg);
+
+  user.behavior.visits += 1;
+  user.behavior.lastSeen = new Date();
+  user.behavior.interestLevel =
+    detectInterest(msg);
+
+  const extractedName = extractName(msg);
+  if (extractedName) {
+    user.profile.name = extractedName;
+    saveAll();
+    return `Nice to meet you, ${extractedName} 😊 How can I help you today?`;
+  }
+
+  user.history.push(msg);
+
+  // =========================================
+  // GREETING
+  // =========================================
+
+  if (intent === "greeting") {
+    if (user.profile.name) {
+      saveAll();
+      return `Welcome back ${user.profile.name} 👋 How can I help you today?`;
+    }
+
+    saveAll();
+    return `Hey 👋 Welcome! I can help with bookings, pricing, timings and service suggestions 😊`;
+  }
+
+  // =========================================
+  // PRICING
+  // =========================================
+
+  if (intent === "pricing") {
+    let pricingText = "💇 Our Services:\n\n";
+
+    Object.keys(client.services).forEach(
+      (service) => {
+        pricingText += `• ${service}: ₹${client.services[service]}\n`;
+      }
+    );
+
+    pricingText +=
+      "\nLet me know if you'd like to book 😊";
+
+    saveAll();
+    return pricingText;
+  }
+
+  // =========================================
+  // TIMINGS
+  // =========================================
+
+  if (intent === "timing") {
+    saveAll();
+    return "🕒 We are open daily from 10 AM to 8 PM 😊";
+  }
+
+  // =========================================
+  // EMOTIONAL RESPONSE
+  // =========================================
+
+  if (intent === "emotion_low") {
+    saveAll();
+    return "That sounds exhausting 😔 Sometimes a relaxing facial or grooming session really helps you feel refreshed. Want me to suggest something comfortable for you?";
+  }
+
+  // =========================================
+  // EVENT BASED SELLING
+  // =========================================
+
+  if (intent === "event_need") {
+    saveAll();
+    return "Nice 😊 For special events, a fresh haircut + beard styling or facial works really well. Want me to help you book the best option?";
+  }
+
+  // =========================================
+  // BOOKING START
+  // =========================================
+
+  if (intent === "booking") {
+    const today =
+      new Date().toISOString().split("T")[0];
+
+    const slots = getAvailableSlots(
+      today,
+      businessId
+    );
+
+    user.bookingFlow.waitingForSlot = true;
+
+    saveAll();
+
+    return `📅 Available slots for today:\n\n${slots.join(
+      "\n"
+    )}\n\nReply with your preferred time 😊`;
+  }
+
+  // =========================================
+  // SLOT SELECTED
+  // =========================================
+
+  if (
+    user.bookingFlow.waitingForSlot &&
+    /^\d{2}:\d{2}$/.test(msg)
+  ) {
+    const date =
+      new Date().toISOString().split("T")[0];
+
+    bookings.push({
+      phone: userId,
+      date,
+      time: msg,
+      businessId
+    });
+
+    user.bookingFlow.waitingForSlot = false;
+
+    const amount =
+      client.services.haircut || 300;
+
+    revenue.push({
+      businessId,
+      amount,
+      date: new Date()
+    });
+
+    saveAll();
+
+    return `✅ Your slot is reserved for ${msg}\n\n💳 Payment confirmation link will be shared shortly.`;
+  }
+
+  // =========================================
+  // SOFT UPSELL
+  // =========================================
+
+  if (
+    user.behavior.interestLevel === "high"
+  ) {
+    saveAll();
+    return "✨ We also have premium grooming packages and relaxing facial combos if you'd like something extra special 😊";
+  }
+
+  // =========================================
+  // DEFAULT
+  // =========================================
+
+  saveAll();
+
+  return "🤖 I can help with bookings, pricing, timings and recommendations. Tell me what you're looking for 😊";
+}
+
+// =====================================================
+// WEBHOOK
+// =====================================================
+
 app.post("/webhook", async (req, res) => {
   try {
-    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const msg =
+      req.body.entry?.[0]?.changes?.[0]?.value
+        ?.messages?.[0];
+
     if (!msg) return res.sendStatus(200);
 
     const from = msg.from;
     const text = msg.text?.body || "";
 
     const phoneId =
-      req.body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+      req.body.entry?.[0]?.changes?.[0]?.value
+        ?.metadata?.phone_number_id;
 
-    let businessId = Object.keys(clients).find(
-      key =>
-        String(clients[key].phone_number_id) === String(phoneId)
+    const businessId = Object.keys(
+      clients
+    ).find(
+      (key) =>
+        String(
+          clients[key].phone_number_id
+        ) === String(phoneId)
     );
 
     if (!businessId) {
-      console.log("❌ No business match");
+      console.log(
+        "❌ No matching business found"
+      );
       return res.sendStatus(200);
     }
 
     const client = clients[businessId];
 
-    // 🔥 ONLY OPENAI RESPONSE
-    const reply = await getOpenAIReply(text);
+    const reply = getSmartAI(
+      from,
+      text,
+      businessId
+    );
 
     await axios.post(
       `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
       {
         messaging_product: "whatsapp",
         to: from,
-        text: { body: reply }
+        text: {
+          body: reply
+        }
       },
       {
         headers: {
-          Authorization: `Bearer ${client.token}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type":
+            "application/json"
         }
       }
     );
 
-    res.sendStatus(200);
+    // payment link send after slot booking
+    if (
+      /^\d{2}:\d{2}$/.test(text) &&
+      memory[from]?.bookingFlow
+        ?.waitingForSlot === false
+    ) {
+      const amount =
+        client.services.haircut || 300;
 
+      const paymentLink =
+        await createPaymentLink(
+          amount,
+          from
+        );
+
+      if (paymentLink) {
+        await axios.post(
+          `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
+          {
+            messaging_product:
+              "whatsapp",
+            to: from,
+            text: {
+              body: `💳 Complete your booking payment here:\n${paymentLink}`
+            }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      }
+    }
+
+    res.sendStatus(200);
   } catch (e) {
-    console.log("❌ WEBHOOK ERROR:", e.response?.data || e.message);
+    console.log(
+      "❌ WEBHOOK ERROR:",
+      e.response?.data || e.message
+    );
+
     res.sendStatus(200);
   }
 });
 
-// ===== START =====
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🔥 SERVER RUNNING"));
+// =====================================================
+// START
+// =====================================================
+
+const PORT =
+  process.env.PORT || 3000;
+
+app.listen(PORT, () =>
+  console.log(
+    "🔥 SERVER RUNNING ON PORT",
+    PORT
+  )
+);
