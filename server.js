@@ -240,16 +240,16 @@ async function createPaymentLink(amount, phone) {
 function detectIntent(message) {
   const msg = message.toLowerCase();
 
-  if (/book|appointment|schedule/.test(msg))
+  if (/book|booking|appointment|schedule/.test(msg))
     return "booking";
 
-  if (/price|cost|rate|charge/.test(msg))
+  if (/price|pricing|cost|rate|charge/.test(msg))
     return "pricing";
 
-  if (/time|open|close|hours/.test(msg))
+  if (/time|timing|timings|open|close|hours/.test(msg))
     return "timing";
 
-  if (/hello|hi|hey/.test(msg))
+  if (/hello|hi|hey|hii/.test(msg))
     return "greeting";
 
   if (/tired|stress|sad|low/.test(msg))
