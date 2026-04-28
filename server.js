@@ -25,11 +25,11 @@ const razorpay = new Razorpay({
 });
 
 const genAI = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY || "test"
+  process.env.GEMINI_API_KEY 
 );
 
 const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-latest"
+  model: "gemini-1.5-pro-latest"
 });
 
 // =====================================================
