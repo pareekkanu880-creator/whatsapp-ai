@@ -1,34 +1,14 @@
 // Full Final Enterprise Production-Safe server.js
-// Smart AI + Revenue Automation + CRM + Multi-Business Platform
+// Gemini = True Main Brain
+// No robotic fixed replies for normal conversation
+// Only protected business logic stays rule-based
 // No removals • No downgrades • Only upgrades
-
-// NOTE:
-// This is the full combined architecture:
-// - Gemini AI Brain
-// - Dynamic Multi-Business Support
-// - Smart Memory
-// - Dynamic Pricing / Timings / Slots
-// - Repeat Customer Recognition
-// - Emotional Intelligence
-// - Objection Handling
-// - Premium Upsell Logic
-// - Lead Scoring
-// - Hot Lead Detection
-// - Follow-up Automation
-// - Pending Payment Recovery
-// - Abandoned Booking Recovery
-// - CRM-style Tracking
-// - Advanced Dashboard
-// - Razorpay Payment Flow
-// - WhatsApp Automation
-// - SaaS-ready Architecture
 
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Razorpay = require("razorpay");
-const crypto = require("crypto");
 const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -90,7 +70,10 @@ function saveAll() {
     fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
     fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
     fs.writeFileSync("followups.json", JSON.stringify(followups, null, 2));
-    fs.writeFileSync("paymentsPending.json", JSON.stringify(paymentsPending, null, 2));
+    fs.writeFileSync(
+      "paymentsPending.json",
+      JSON.stringify(paymentsPending, null, 2)
+    );
   } catch (e) {
     console.log("❌ SAVE ERROR:", e.message);
   }
@@ -129,7 +112,7 @@ app.get("/webhook", (req, res) => {
 });
 
 // =====================================================
-// REGISTER (GENERIC MULTI-BUSINESS)
+// REGISTER (GENERIC MULTI BUSINESS)
 // =====================================================
 
 app.post("/api/register", (req, res) => {
@@ -249,7 +232,7 @@ app.get("/api/client-data", (req, res) => {
 });
 
 // =====================================================
-// SLOT SYSTEM
+// HELPERS
 // =====================================================
 
 function getAvailableSlots(date, businessId) {
@@ -268,7 +251,7 @@ function getAvailableSlots(date, businessId) {
     .filter(
       (b) =>
         b.businessId === businessId &&
-        b.date === date
+        String(b.date).slice(0, 10) === date
     )
     .map((b) => b.time);
 
@@ -276,10 +259,6 @@ function getAvailableSlots(date, businessId) {
     (slot) => !bookedSlots.includes(slot)
   );
 }
-
-// =====================================================
-// LEAD SCORING
-// =====================================================
 
 function calculateLeadScore(message) {
   const msg = message.toLowerCase();
@@ -298,11 +277,11 @@ function saveLead(businessId, userId, message) {
     leads[businessId] = [];
   }
 
+  const score = calculateLeadScore(message);
+
   const existing = leads[businessId].find(
     (lead) => lead.userId === userId
   );
-
-  const score = calculateLeadScore(message);
 
   if (existing) {
     existing.score = Math.max(existing.score, score);
@@ -317,10 +296,6 @@ function saveLead(businessId, userId, message) {
     });
   }
 }
-
-// =====================================================
-// FOLLOW-UP + PAYMENT RECOVERY
-// =====================================================
 
 function addFollowup(userId, businessId, reason) {
   followups.push({
@@ -342,10 +317,6 @@ function addPendingPayment(userId, businessId, amount) {
   });
 }
 
-// =====================================================
-// PAYMENT LINK
-// =====================================================
-
 async function createPaymentLink(amount, phone) {
   try {
     const link = await razorpay.paymentLink.create({
@@ -365,80 +336,17 @@ async function createPaymentLink(amount, phone) {
 }
 
 // =====================================================
-// INTENT DETECTION
-// =====================================================
-
-function detectIntent(message) {
-  const msg = message.toLowerCase().trim();
-
-  if (/^hi$|^hello$|^hey$/.test(msg)) return "greeting";
-  if (/price|pricing|cost|fees/.test(msg)) return "pricing";
-  if (/book|booking|appointment|slot/.test(msg)) return "booking";
-  if (/time|timing|open|close/.test(msg)) return "timing";
-  if (/expensive|costly|too much/.test(msg)) return "price_objection";
-  if (/sad|stress|tired|low/.test(msg)) return "emotion_low";
-  if (/wedding|party|event|special/.test(msg)) return "event_need";
-
-  return "general";
-}
-
-function detectCustomerType(message) {
-  const msg = message.toLowerCase();
-
-  if (/premium|luxury|vip|best/.test(msg)) return "premium";
-  if (/cheap|budget|discount/.test(msg)) return "budget";
-
-  return "normal";
-}
-
-// =====================================================
-// GEMINI AI
-// =====================================================
-
-async function getGeminiReply(message, client, user) {
-  try {
-    const prompt = `
-You are a premium AI WhatsApp business assistant.
-
-Business Name: ${client.name}
-Business Type: ${client.businessType}
-Services: ${JSON.stringify(client.services)}
-Timings: ${client.timings}
-
-Customer Type: ${user.profile.customerType || "normal"}
-
-Rules:
-- Reply like ChatGPT
-- Human + premium tone
-- Build trust
-- Convert to booking/payment
-- Handle objections intelligently
-- Understand emotions
-- Adapt to business type
-
-Customer Message:
-${message}
-`;
-
-    const result = await geminiModel.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || null;
-  } catch (e) {
-    console.log("❌ Gemini Error:", e.message);
-    return null;
-  }
-}
-
-// =====================================================
-// MAIN SMART AI ENGINE
+// GEMINI-FIRST MAIN AI ENGINE
 // =====================================================
 
 async function getSmartAI(userId, message, businessId) {
   if (!memory[userId]) {
     memory[userId] = {
+      history: [],
       profile: {
-        customerType: "normal",
-        preferredTime: null
+        preferredTime: null,
+        emotionalState: "normal",
+        customerType: "normal"
       },
       behavior: {
         visits: 0,
@@ -453,89 +361,64 @@ async function getSmartAI(userId, message, businessId) {
   const user = memory[userId];
   const client = clients[businessId];
   const msg = message.trim();
-  const intent = detectIntent(msg);
+  const msgLower = msg.toLowerCase();
+
+  // =====================================================
+  // SMART MEMORY UPDATE
+  // =====================================================
 
   user.behavior.visits += 1;
-  user.profile.customerType = detectCustomerType(msg);
+  user.behavior.repeatCustomer = user.behavior.visits > 2;
 
-  if (user.behavior.visits > 2) {
-    user.behavior.repeatCustomer = true;
+  if (/sad|stress|tired|low|upset/.test(msgLower)) {
+    user.profile.emotionalState = "low";
+  }
+
+  if (/happy|great|good|awesome/.test(msgLower)) {
+    user.profile.emotionalState = "positive";
+  }
+
+  if (/premium|luxury|vip|best/.test(msgLower)) {
+    user.profile.customerType = "premium";
+  }
+
+  if (/cheap|budget|discount/.test(msgLower)) {
+    user.profile.customerType = "budget";
+  }
+
+  user.history.push({
+    message: msg,
+    time: new Date()
+  });
+
+  if (user.history.length > 20) {
+    user.history = user.history.slice(-20);
   }
 
   saveLead(businessId, userId, msg);
 
-  // Greeting
-  if (intent === "greeting") {
-    saveAll();
+  // =====================================================
+  // PROTECTED LOGIC ONLY
+  // Booking / Payment / Pricing / Timings
+  // =====================================================
 
-    if (user.behavior.repeatCustomer) {
-      return `Welcome back 😊 Great to see you again. How can I help you today?`;
-    }
+  // Booking Intent
+  if (
+    /book|booking|appointment|reserve|slot|schedule/.test(
+      msgLower
+    )
+  ) {
+    const today = new Date()
+      .toISOString()
+      .split("T")[0];
 
-    return `Hey 👋 Welcome to ${client.name}! I can help with bookings, pricing and recommendations 😊`;
-  }
-
-  // Pricing
-  if (intent === "pricing") {
-    addFollowup(userId, businessId, "pricing_interest");
-
-    let text = "💼 Our Services:\n\n";
-
-    Object.keys(client.services).forEach((service) => {
-      text += `• ${service}: ₹${client.services[service]}\n`;
-    });
-
-    text += "\nWould you like help choosing the best option? 😊";
-
-    saveAll();
-    return text;
-  }
-
-  // Timing
-  if (intent === "timing") {
-    saveAll();
-    return `🕒 Our timings are:\n\n${client.timings}`;
-  }
-
-  // Price objection
-  if (intent === "price_objection") {
-    saveAll();
-
-    if (user.profile.customerType === "budget") {
-      return `No worries 😊
-
-We also have smaller packages depending on your budget. I can help you choose the best one.`;
-    }
-
-    return `I understand 😊
-
-Many customers prefer our value packages because they give better long-term results and experience.`;
-  }
-
-  // Emotional + premium upsell
-  if (intent === "emotion_low") {
-    saveAll();
-
-    return `That sounds exhausting 😔
-
-Sometimes a premium relaxing session really helps you feel refreshed. Want me to suggest something comfortable for you?`;
-  }
-
-  // Event need
-  if (intent === "event_need") {
-    saveAll();
-
-    return `For special events, many customers prefer our premium package ✨
-
-Would you like me to help you book the best option?`;
-  }
-
-  // Booking start
-  if (intent === "booking") {
-    const today = new Date().toISOString().split("T")[0];
-    const slots = getAvailableSlots(today, businessId);
+    const slots = getAvailableSlots(
+      today,
+      businessId
+    );
 
     user.bookingFlow.waitingForSlot = true;
+    addFollowup(userId, businessId, "booking_started");
 
     saveAll();
 
@@ -546,23 +429,20 @@ ${slots.join("\n")}
 Reply with your preferred time 😊`;
   }
 
-  // Slot selected
+  // Slot Selected
   if (
     user.bookingFlow.waitingForSlot &&
     /^\d{2}:\d{2}$/.test(msg)
   ) {
+    const amount =
+      Object.values(client.services)[0] || 500;
+
     bookings.push({
       phone: userId,
       date: new Date(),
       time: msg,
       businessId
     });
-
-    user.bookingFlow.waitingForSlot = false;
-    user.profile.preferredTime = msg;
-
-    const amount =
-      Object.values(client.services)[0] || 500;
 
     revenue.push({
       businessId,
@@ -572,28 +452,120 @@ Reply with your preferred time 😊`;
 
     addPendingPayment(userId, businessId, amount);
 
+    user.bookingFlow.waitingForSlot = false;
+    user.profile.preferredTime = msg;
+
     saveAll();
 
     return `✅ Your slot is temporarily reserved for ${msg}
 
-⏳ Complete payment within 15 minutes.
+⏳ Your slot will be held for 15 minutes only.
+
+💳 Complete payment to confirm your booking.
 
 Payment link will be shared shortly 😊`;
   }
 
-  // Gemini fallback
-  const aiReply = await getGeminiReply(
-    message,
-    client,
-    user
-  );
+  // Pricing
+  if (/price|pricing|cost|fees|charges/.test(msgLower)) {
+    let pricingText = `💼 ${client.name} Services:
 
+`;
+
+    Object.keys(client.services).forEach((service) => {
+      pricingText += `• ${service}: ₹${client.services[service]}\n`;
+    });
+
+    pricingText += `
+Would you like help choosing the best option? 😊`;
+
+    addFollowup(userId, businessId, "pricing_interest");
+
+    saveAll();
+
+    return pricingText;
+  }
+
+  // Timings
+  if (/time|timing|hours|open|close/.test(msgLower)) {
+    saveAll();
+
+    return `🕒 Our timings are:
+
+${client.timings}
+
+We look forward to serving you 😊`;
+  }
+
+  // =====================================================
+  // GEMINI = TRUE MAIN BRAIN
+  // Everything else handled here
+  // =====================================================
+
+  const recentHistory = user.history
+    .slice(-8)
+    .map((h) => `User: ${h.message}`)
+    .join("\n");
+
+  const prompt = `
+You are an elite premium AI business assistant.
+
+You are the MAIN brain.
+You must sound smarter than normal bots.
+
+Business Details:
+Business Name: ${client.name}
+Business Type: ${client.businessType}
+Services: ${JSON.stringify(client.services)}
+Business Timings: ${client.timings}
+
+Customer Profile:
+Customer Type: ${user.profile.customerType}
+Emotional State: ${user.profile.emotionalState}
+Preferred Time: ${user.profile.preferredTime || "Unknown"}
+Repeat Customer: ${user.behavior.repeatCustomer ? "Yes" : "No"}
+
+Recent Conversation:
+${recentHistory}
+
+Rules:
+- Human natural replies only
+- Never robotic
+- Never generic
+- Continue naturally like ChatGPT
+- Understand emotions deeply
+- Handle objections intelligently
+- Build trust
+- Soft upsell naturally
+- Increase booking conversion
+- Never use robotic fallback replies
+- Never say "I can help with bookings and pricing"
+
+User Message:
+${msg}
+
+Reply naturally:
+`;
+
+  try {
+    const result =
+      await geminiModel.generateContent(prompt);
+
+    const response = await result.response;
+    const geminiReply = response.text();
+
+    if (geminiReply && geminiReply.trim()) {
+      saveAll();
+      return geminiReply.trim();
+    }
+  } catch (e) {
+    console.log("❌ GEMINI ERROR:", e.message);
+  }
+
+  // Emergency only fallback
   saveAll();
 
-  return (
-    aiReply ||
-    "🤖 I can help with bookings, pricing and support 😊"
-  );
+  return `Tell me a little more so I can help you better 😊`;
 }
 
 // =====================================================
@@ -611,8 +583,8 @@ app.post("/webhook", async (req, res) => {
     const text = msg.text?.body || "";
 
     const phoneId =
-      req.body.entry?.[0]?.changes?.[0]?.value?.metadata
-        ?.phone_number_id;
+      req.body.entry?.[0]?.changes?.[0]?.value
+        ?.metadata?.phone_number_id;
 
     const businessId = Object.keys(clients).find(
       (key) =>
@@ -649,7 +621,7 @@ app.post("/webhook", async (req, res) => {
       }
     );
 
-    // Payment Link After Slot Selection
+    // Payment link after slot selected
     if (
       /^\d{2}:\d{2}$/.test(text) &&
       memory[from]?.bookingFlow?.waitingForSlot === false
@@ -686,7 +658,11 @@ ${paymentLink}`
 
     res.sendStatus(200);
   } catch (e) {
-    console.log("❌ WEBHOOK ERROR:", e.message);
+    console.log(
+      "❌ WEBHOOK ERROR:",
+      e.response?.data || e.message
+    );
+
     res.sendStatus(200);
   }
 });
