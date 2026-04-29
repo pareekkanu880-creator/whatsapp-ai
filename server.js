@@ -50,7 +50,7 @@ const genAI = new GoogleGenerativeAI(
 );
 
 const geminiModel = genAI.getGenerativeModel(
-  { model: "gemini-1.5-flash" }, 
+  { model: "gemini-2.0-flash" }, 
   { apiVersion: "v1" }
 );
 
@@ -396,16 +396,14 @@ function detectCustomerType(message) {
 // GEMINI AI
 // =====================================================
 
-async function getGeminiReply(message, client, user) {
+async function getGeminiReply(message, client, user, retries = 3) {
   try {
     const prompt = `
 You are a premium AI WhatsApp business assistant.
-
 Business Name: ${client.name}
 Business Type: ${client.businessType}
 Services: ${JSON.stringify(client.services)}
 Timings: ${client.timings}
-
 Customer Type: ${user.profile.customerType || "normal"}
 
 Rules:
@@ -424,7 +422,15 @@ ${message}
     const result = await geminiModel.generateContent(prompt);
     const response = await result.response;
     return response.text() || null;
+
   } catch (e) {
+    // FIX FOR 503 ERROR: If model is busy, wait and retry
+    if (e.status === 503 && retries > 0) {
+      console.log(`⚠️ Gemini busy (503). Retrying in 2s... (${retries} left)`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return getGeminiReply(message, client, user, retries - 1);
+    }
+
     console.log("❌ Gemini Error:", e.message);
     return null;
   }
