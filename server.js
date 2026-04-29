@@ -50,7 +50,7 @@ const genAI = new GoogleGenerativeAI(
 );
 
 const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-3.1-flash-lite"
+  model: "gemini-1.5-flash-8b"
 });
 
 // =====================================================
