@@ -49,9 +49,10 @@ const genAI = new GoogleGenerativeAI(
   process.env.GEMINI_API_KEY || "test"
 );
 
-const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-8b"
-});
+const geminiModel = genAI.getGenerativeModel(
+  { model: "gemini-1.5-flash" }, 
+  { apiVersion: "v1" }
+);
 
 // =====================================================
 // SAFE JSON LOAD
