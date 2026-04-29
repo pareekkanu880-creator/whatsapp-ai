@@ -1,34 +1,13 @@
 // Full Final Enterprise Production-Safe server.js
-// Smart AI + Revenue Automation + CRM + Multi-Business Platform
-// No removals • No downgrades • Only upgrades
-
-// NOTE:
-// This is the full combined architecture:
-// - Gemini AI Brain
-// - Dynamic Multi-Business Support
-// - Smart Memory
-// - Dynamic Pricing / Timings / Slots
-// - Repeat Customer Recognition
-// - Emotional Intelligence
-// - Objection Handling
-// - Premium Upsell Logic
-// - Lead Scoring
-// - Hot Lead Detection
-// - Follow-up Automation
-// - Pending Payment Recovery
-// - Abandoned Booking Recovery
-// - CRM-style Tracking
-// - Advanced Dashboard
-// - Razorpay Payment Flow
-// - WhatsApp Automation
-// - SaaS-ready Architecture
+// Gemini Decision Engine + Backend Execution Engine
+// Full Automatic AI SaaS Architecture
+// No removals • No downgrades • No fallback replies • No robotic logic
 
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Razorpay = require("razorpay");
-const crypto = require("crypto");
 const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -90,7 +69,10 @@ function saveAll() {
     fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
     fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
     fs.writeFileSync("followups.json", JSON.stringify(followups, null, 2));
-    fs.writeFileSync("paymentsPending.json", JSON.stringify(paymentsPending, null, 2));
+    fs.writeFileSync(
+      "paymentsPending.json",
+      JSON.stringify(paymentsPending, null, 2)
+    );
   } catch (e) {
     console.log("❌ SAVE ERROR:", e.message);
   }
@@ -129,7 +111,7 @@ app.get("/webhook", (req, res) => {
 });
 
 // =====================================================
-// REGISTER (GENERIC MULTI-BUSINESS)
+// REGISTER
 // =====================================================
 
 app.post("/api/register", (req, res) => {
@@ -152,14 +134,11 @@ app.post("/api/register", (req, res) => {
   clients[email] = {
     name: businessName || "My Business",
     businessType: businessType || "general",
-
     services:
       services || {
         consultation: 500
       },
-
     timings: timings || "10:00 AM to 8:00 PM",
-
     availableSlots:
       availableSlots || [
         "10:00",
@@ -168,7 +147,6 @@ app.post("/api/register", (req, res) => {
         "16:00",
         "18:00"
       ],
-
     token: process.env.WHATSAPP_TOKEN,
     phone_number_id: process.env.PHONE_NUMBER_ID
   };
@@ -202,7 +180,7 @@ app.post("/api/login", (req, res) => {
 });
 
 // =====================================================
-// ADVANCED DASHBOARD
+// DASHBOARD
 // =====================================================
 
 app.get("/api/client-data", (req, res) => {
@@ -249,7 +227,7 @@ app.get("/api/client-data", (req, res) => {
 });
 
 // =====================================================
-// SLOT SYSTEM
+// HELPERS
 // =====================================================
 
 function getAvailableSlots(date, businessId) {
@@ -268,7 +246,7 @@ function getAvailableSlots(date, businessId) {
     .filter(
       (b) =>
         b.businessId === businessId &&
-        b.date === date
+        String(b.date).slice(0, 10) === date
     )
     .map((b) => b.time);
 
@@ -277,23 +255,7 @@ function getAvailableSlots(date, businessId) {
   );
 }
 
-// =====================================================
-// LEAD SCORING
-// =====================================================
-
-function calculateLeadScore(message) {
-  const msg = message.toLowerCase();
-  let score = 1;
-
-  if (/price|pricing|cost/.test(msg)) score += 2;
-  if (/book|appointment|today|tomorrow/.test(msg)) score += 4;
-  if (/premium|urgent|best|vip|wedding/.test(msg)) score += 3;
-  if (/yes|okay|sure/.test(msg)) score += 2;
-
-  return Math.min(score, 10);
-}
-
-function saveLead(businessId, userId, message) {
+function saveLead(businessId, userId, score, message) {
   if (!leads[businessId]) {
     leads[businessId] = [];
   }
@@ -302,25 +264,19 @@ function saveLead(businessId, userId, message) {
     (lead) => lead.userId === userId
   );
 
-  const score = calculateLeadScore(message);
-
   if (existing) {
-    existing.score = Math.max(existing.score, score);
+    existing.score = Math.max(existing.score, score || 1);
     existing.lastMessage = message;
     existing.updatedAt = new Date();
   } else {
     leads[businessId].push({
       userId,
-      score,
+      score: score || 1,
       lastMessage: message,
       updatedAt: new Date()
     });
   }
 }
-
-// =====================================================
-// FOLLOW-UP + PAYMENT RECOVERY
-// =====================================================
 
 function addFollowup(userId, businessId, reason) {
   followups.push({
@@ -342,10 +298,6 @@ function addPendingPayment(userId, businessId, amount) {
   });
 }
 
-// =====================================================
-// PAYMENT LINK
-// =====================================================
-
 async function createPaymentLink(amount, phone) {
   try {
     const link = await razorpay.paymentLink.create({
@@ -365,235 +317,209 @@ async function createPaymentLink(amount, phone) {
 }
 
 // =====================================================
-// INTENT DETECTION
+// GEMINI DECISION ENGINE
 // =====================================================
 
-function detectIntent(message) {
-  const msg = message.toLowerCase().trim();
-
-  if (/^hi$|^hello$|^hey$/.test(msg)) return "greeting";
-  if (/price|pricing|cost|fees/.test(msg)) return "pricing";
-  if (/book|booking|appointment|slot/.test(msg)) return "booking";
-  if (/time|timing|open|close/.test(msg)) return "timing";
-  if (/expensive|costly|too much/.test(msg)) return "price_objection";
-  if (/sad|stress|tired|low/.test(msg)) return "emotion_low";
-  if (/wedding|party|event|special/.test(msg)) return "event_need";
-
-  return "general";
-}
-
-function detectCustomerType(message) {
-  const msg = message.toLowerCase();
-
-  if (/premium|luxury|vip|best/.test(msg)) return "premium";
-  if (/cheap|budget|discount/.test(msg)) return "budget";
-
-  return "normal";
-}
-
-// =====================================================
-// GEMINI AI
-// =====================================================
-
-async function getGeminiReply(message, client, user) {
-  try {
-    const prompt = `
-You are a premium AI WhatsApp business assistant.
-
-Business Name: ${client.name}
-Business Type: ${client.businessType}
-Services: ${JSON.stringify(client.services)}
-Timings: ${client.timings}
-
-Customer Type: ${user.profile.customerType || "normal"}
-
-Rules:
-- Reply like ChatGPT
-- Human + premium tone
-- Build trust
-- Convert to booking/payment
-- Handle objections intelligently
-- Understand emotions
-- Adapt to business type
-
-Customer Message:
-${message}
-`;
-
-    const result = await geminiModel.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || null;
-  } catch (e) {
-    console.log("❌ Gemini Error:", e.message);
-    return null;
-  }
-}
-
-// =====================================================
-// MAIN SMART AI ENGINE
-// =====================================================
-
-async function getSmartAI(userId, message, businessId) {
+async function getGeminiDecision(userId, message, businessId) {
   if (!memory[userId]) {
     memory[userId] = {
-      profile: {
-        customerType: "normal",
-        preferredTime: null
-      },
+      history: [],
+      profile: {},
       behavior: {
-        visits: 0,
-        repeatCustomer: false
-      },
-      bookingFlow: {
-        waitingForSlot: false
+        visits: 0
       }
     };
   }
 
   const user = memory[userId];
   const client = clients[businessId];
-  const msg = message.trim();
-  const intent = detectIntent(msg);
 
   user.behavior.visits += 1;
-  user.profile.customerType = detectCustomerType(msg);
 
-  if (user.behavior.visits > 2) {
-    user.behavior.repeatCustomer = true;
-  }
-
-  saveLead(businessId, userId, msg);
-
-  // Greeting
-  if (intent === "greeting") {
-    saveAll();
-
-    if (user.behavior.repeatCustomer) {
-      return `Welcome back 😊 Great to see you again. How can I help you today?`;
-    }
-
-    return `Hey 👋 Welcome to ${client.name}! I can help with bookings, pricing and recommendations 😊`;
-  }
-
-  // Pricing
-  if (intent === "pricing") {
-    addFollowup(userId, businessId, "pricing_interest");
-
-    let text = "💼 Our Services:\n\n";
-
-    Object.keys(client.services).forEach((service) => {
-      text += `• ${service}: ₹${client.services[service]}\n`;
-    });
-
-    text += "\nWould you like help choosing the best option? 😊";
-
-    saveAll();
-    return text;
-  }
-
-  // Timing
-  if (intent === "timing") {
-    saveAll();
-    return `🕒 Our timings are:\n\n${client.timings}`;
-  }
-
-  // Price objection
-  if (intent === "price_objection") {
-    saveAll();
-
-    if (user.profile.customerType === "budget") {
-      return `No worries 😊
-
-We also have smaller packages depending on your budget. I can help you choose the best one.`;
-    }
-
-    return `I understand 😊
-
-Many customers prefer our value packages because they give better long-term results and experience.`;
-  }
-
-  // Emotional + premium upsell
-  if (intent === "emotion_low") {
-    saveAll();
-
-    return `That sounds exhausting 😔
-
-Sometimes a premium relaxing session really helps you feel refreshed. Want me to suggest something comfortable for you?`;
-  }
-
-  // Event need
-  if (intent === "event_need") {
-    saveAll();
-
-    return `For special events, many customers prefer our premium package ✨
-
-Would you like me to help you book the best option?`;
-  }
-
-  // Booking start
-  if (intent === "booking") {
-    const today = new Date().toISOString().split("T")[0];
-    const slots = getAvailableSlots(today, businessId);
-
-    user.bookingFlow.waitingForSlot = true;
-
-    saveAll();
-
-    return `📅 Available slots for today:
-
-${slots.join("\n")}
-
-Reply with your preferred time 😊`;
-  }
-
-  // Slot selected
-  if (
-    user.bookingFlow.waitingForSlot &&
-    /^\d{2}:\d{2}$/.test(msg)
-  ) {
-    bookings.push({
-      phone: userId,
-      date: new Date(),
-      time: msg,
-      businessId
-    });
-
-    user.bookingFlow.waitingForSlot = false;
-    user.profile.preferredTime = msg;
-
-    const amount =
-      Object.values(client.services)[0] || 500;
-
-    revenue.push({
-      businessId,
-      amount,
-      date: new Date()
-    });
-
-    addPendingPayment(userId, businessId, amount);
-
-    saveAll();
-
-    return `✅ Your slot is temporarily reserved for ${msg}
-
-⏳ Complete payment within 15 minutes.
-
-Payment link will be shared shortly 😊`;
-  }
-
-  // Gemini fallback
-  const aiReply = await getGeminiReply(
+  user.history.push({
     message,
-    client,
-    user
+    time: new Date()
+  });
+
+  if (user.history.length > 20) {
+    user.history = user.history.slice(-20);
+  }
+
+  const recentHistory = user.history
+    .slice(-8)
+    .map((h) => `User: ${h.message}`)
+    .join("\n");
+
+  const prompt = `
+You are the complete operating brain of an enterprise WhatsApp AI SaaS.
+
+You make ALL business decisions.
+
+Backend only executes your decisions.
+
+Business:
+Name: ${client.name}
+Type: ${client.businessType}
+Services: ${JSON.stringify(client.services)}
+Timings: ${client.timings}
+Available Slots: ${JSON.stringify(client.availableSlots)}
+
+Customer:
+Repeat Visits: ${user.behavior.visits}
+
+Recent Conversation:
+${recentHistory}
+
+You must decide:
+- booking intent
+- slot reservation
+- payment requirement
+- pricing response
+- timing response
+- lead score
+- hot lead detection
+- follow-up requirement
+- objection handling
+- upselling
+- emotional understanding
+- premium conversion
+- abandoned booking recovery
+- pending payment recovery
+
+Return ONLY valid JSON like this:
+
+{
+  "reply": "natural human reply here",
+  "leadScore": 8,
+  "needsFollowup": true,
+  "followupReason": "pricing_interest",
+  "paymentRequired": false,
+  "bookingRequested": false,
+  "preferredSlot": null
+}
+
+No markdown.
+No explanation.
+Only JSON.
+
+User Message:
+${message}
+`;
+
+ const result = await geminiModel.generateContent(prompt);
+const response = await result.response;
+let raw = response.text();
+
+// Remove markdown wrappers if Gemini sends ```json
+raw = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+
+try {
+  return JSON.parse(raw);
+} catch (e) {
+  console.log("❌ JSON PARSE ERROR:", raw);
+
+  // emergency recovery without fallback replies
+  return {
+    reply: raw || "I understand. Let me help you.",
+    leadScore: 5,
+    needsFollowup: false,
+    followupReason: null,
+    paymentRequired: false,
+    bookingRequested: false,
+    preferredSlot: null
+  };
+}
+
+// =====================================================
+// MAIN AI EXECUTION ENGINE
+// =====================================================
+
+async function getSmartAI(userId, message, businessId) {
+  const decision = await getGeminiDecision(
+    userId,
+    message,
+    businessId
   );
+
+  const client = clients[businessId];
+
+  saveLead(
+    businessId,
+    userId,
+    decision.leadScore,
+    message
+  );
+
+  if (decision.needsFollowup) {
+    addFollowup(
+      userId,
+      businessId,
+      decision.followupReason || "general"
+    );
+  }
+
+  if (decision.bookingRequested) {
+    const today = new Date()
+      .toISOString()
+      .split("T")[0];
+
+    const slots = getAvailableSlots(
+      today,
+      businessId
+    );
+
+    if (decision.preferredSlot) {
+      const amount =
+        Object.values(client.services)[0] || 500;
+
+      bookings.push({
+        phone: userId,
+        date: new Date(),
+        time: decision.preferredSlot,
+        businessId
+      });
+
+      revenue.push({
+        businessId,
+        amount,
+        date: new Date()
+      });
+
+      if (decision.paymentRequired) {
+        addPendingPayment(
+          userId,
+          businessId,
+          amount
+        );
+      }
+
+      saveAll();
+
+      return {
+        reply: decision.reply,
+        paymentRequired: decision.paymentRequired,
+        amount
+      };
+    }
+
+    saveAll();
+
+    return {
+      reply: `${decision.reply}
+
+📅 Available slots today:
+
+${slots.join("\n")}`,
+      paymentRequired: false
+    };
+  }
 
   saveAll();
 
-  return (
-    aiReply ||
-    "🤖 I can help with bookings, pricing and support 😊"
-  );
+  return {
+    reply: decision.reply,
+    paymentRequired: decision.paymentRequired
+  };
 }
 
 // =====================================================
@@ -611,8 +537,8 @@ app.post("/webhook", async (req, res) => {
     const text = msg.text?.body || "";
 
     const phoneId =
-      req.body.entry?.[0]?.changes?.[0]?.value?.metadata
-        ?.phone_number_id;
+      req.body.entry?.[0]?.changes?.[0]?.value
+        ?.metadata?.phone_number_id;
 
     const businessId = Object.keys(clients).find(
       (key) =>
@@ -626,7 +552,7 @@ app.post("/webhook", async (req, res) => {
 
     const client = clients[businessId];
 
-    const reply = await getSmartAI(
+    const aiResult = await getSmartAI(
       from,
       text,
       businessId
@@ -638,7 +564,7 @@ app.post("/webhook", async (req, res) => {
         messaging_product: "whatsapp",
         to: from,
         text: {
-          body: reply
+          body: aiResult.reply
         }
       },
       {
@@ -649,16 +575,9 @@ app.post("/webhook", async (req, res) => {
       }
     );
 
-    // Payment Link After Slot Selection
-    if (
-      /^\d{2}:\d{2}$/.test(text) &&
-      memory[from]?.bookingFlow?.waitingForSlot === false
-    ) {
-      const amount =
-        Object.values(client.services)[0] || 500;
-
+    if (aiResult.paymentRequired) {
       const paymentLink = await createPaymentLink(
-        amount,
+        aiResult.amount || 500,
         from
       );
 
@@ -669,7 +588,7 @@ app.post("/webhook", async (req, res) => {
             messaging_product: "whatsapp",
             to: from,
             text: {
-              body: `💳 Complete your booking payment here:
+              body: `💳 Complete your payment here:
 
 ${paymentLink}`
             }
@@ -686,7 +605,11 @@ ${paymentLink}`
 
     res.sendStatus(200);
   } catch (e) {
-    console.log("❌ WEBHOOK ERROR:", e.message);
+    console.log(
+      "❌ WEBHOOK ERROR:",
+      e.response?.data || e.message
+    );
+
     res.sendStatus(200);
   }
 });
