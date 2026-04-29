@@ -30,7 +30,7 @@ const genAI = new GoogleGenerativeAI(
 );
 
 const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash"
+  model: "gemini-pro"
 });
 
 // =====================================================
