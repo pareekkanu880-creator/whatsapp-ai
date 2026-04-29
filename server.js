@@ -337,58 +337,31 @@ async function createPaymentLink(amount, phone) {
 
 async function getGeminiReply(message, client, user) {
   try {
-    const historyText = (user.history || [])
-      .slice(-8)
-      .map((item) => `User: ${item.message}`)
-      .join("\n");
-
     const prompt = `
-You are an elite premium AI WhatsApp business assistant.
+You are a premium AI WhatsApp business assistant.
 
 Business Name: ${client.name}
 Business Type: ${client.businessType}
 Services: ${JSON.stringify(client.services)}
-Business Timings: ${client.timings}
-
-Customer Profile:
-Customer Type: ${user.profile.customerType || "normal"}
-Repeat Customer: ${user.behavior.repeatCustomer ? "Yes" : "No"}
-Preferred Time: ${user.profile.preferredTime || "Unknown"}
-
-Recent Conversation:
-${historyText}
-
-Rules:
-- Sound like ChatGPT
-- Human natural replies only
-- Never robotic
-- Never generic
-- Build trust naturally
-- Soft premium upsell
-- Handle objections intelligently
-- Understand emotions deeply
-- Increase booking conversion
-- Never use robotic lines like:
-  "I can help with bookings and pricing"
+Timings: ${client.timings}
 
 Customer Message:
 ${message}
 
-Reply naturally:
+Reply naturally like ChatGPT.
 `;
 
-    const result = await geminiModel.generateContent(prompt);
+    const model = genAI.getGenerativeModel({
+      model: "models/text-bison-001"
+    });
+
+    const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text();
+    return response.text().trim();
 
-    if (text && text.trim()) {
-      return text.trim();
-    }
-
-    return null;
   } catch (e) {
     console.log("❌ Gemini Error:", e.message);
-    return null;
+    throw e;
   }
 }
 
