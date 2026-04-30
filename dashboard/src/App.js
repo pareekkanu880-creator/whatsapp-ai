@@ -20,7 +20,6 @@ function App() {
   const [page, setPage] = useState("dashboard");
 
   const [data, setData] = useState({
-    total: 0,
     bookings: 0,
     plan: "free",
     expiresAt: null
@@ -34,36 +33,50 @@ function App() {
 
   const token = localStorage.getItem("token");
 
-  // ===== DATA LOAD =====
+  // ======================
+  // SAFE FETCH
+  // ======================
+  const safeFetch = async (url, options = {}) => {
+    try {
+      const res = await fetch(url, options);
+      return await res.json();
+    } catch (err) {
+      console.log("Fetch error:", err);
+      return null;
+    }
+  };
+
+  // ======================
+  // LOAD DATA
+  // ======================
+
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${API}/api/client-data`, {
+    safeFetch(`${API}/api/client-data`, {
       headers: { Authorization: token }
-    })
-      .then(res => res.json())
-      .then(setData);
+    }).then(d => d && setData(d));
   }, [token]);
 
   useEffect(() => {
     if (!token) return;
 
-    const interval = setInterval(() => {
-      fetch(`${API}/api/live-leads`, {
+    const interval = setInterval(async () => {
+      const data = await safeFetch(`${API}/api/live-leads`, {
         headers: { Authorization: token }
-      })
-        .then(res => res.json())
-        .then(data => {
-          setLiveLeads(data);
+      });
 
-          if (data.length > 0) {
-            setNotifications(prev => [
-              { text: "New Lead Received 🚀" },
-              ...prev
-            ]);
-          }
-        });
-    }, 3000);
+      if (data) {
+        setLiveLeads(data);
+
+        if (data.length > 0) {
+          setNotifications(prev => [
+            { text: "New Lead 🚀" },
+            ...prev.slice(0, 2)
+          ]);
+        }
+      }
+    }, 5000); // optimized
 
     return () => clearInterval(interval);
   }, [token]);
@@ -71,53 +84,60 @@ function App() {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${API}/api/conversion`, {
+    safeFetch(`${API}/api/conversion`, {
       headers: { Authorization: token }
-    })
-      .then(res => res.json())
-      .then(d => setConversion(d.conversion));
+    }).then(d => d && setConversion(d.conversion));
   }, [token]);
-
-  useEffect(() => {
-    fetch(`${API}/api/revenue`)
-      .then(res => res.json())
-      .then(setRevenue);
-  }, []);
 
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${API}/api/bookings`, {
+    safeFetch(`${API}/api/revenue`, {
       headers: { Authorization: token }
-    })
-      .then(res => res.json())
-      .then(setBookings);
+    }).then(d => d && setRevenue(d));
   }, [token]);
 
-  // ===== GROUP BOOKINGS BY DATE (NEW — NOT REMOVING ANYTHING)
+  useEffect(() => {
+    if (!token) return;
+
+    safeFetch(`${API}/api/bookings`, {
+      headers: { Authorization: token }
+    }).then(d => d && setBookings(d));
+  }, [token]);
+
+  // ======================
+  // GROUP BOOKINGS
+  // ======================
   const groupedBookings = bookings.reduce((acc, b) => {
-    const date = b.date || "Unknown";
+    const date = new Date(b.date).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
     acc[date].push(b);
     return acc;
   }, {});
 
-  // ===== FORMAT REVENUE (FIXED CHART)
-  const chartData = revenue.map((r, i) => ({
+  // ======================
+  // CHART DATA
+  // ======================
+  const chartData = revenue.map(r => ({
     name: new Date(r.date).toLocaleDateString(),
     amount: r.amount
   }));
 
-  // ===== PAYMENT =====
+  // ======================
+  // PAYMENT
+  // ======================
   const handleUpgrade = async () => {
     try {
-      const res = await fetch(`${API}/api/create-order`, {
+      const order = await safeFetch(`${API}/api/create-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: token })
       });
 
-      const order = await res.json();
+      if (!window.Razorpay) {
+        alert("Razorpay SDK not loaded");
+        return;
+      }
 
       const options = {
         key: "rzp_live_SYhxFosHQr1vtB",
@@ -127,20 +147,16 @@ function App() {
         order_id: order.id,
 
         handler: async function (response) {
-          const verify = await fetch(`${API}/api/verify-payment`, {
+          const result = await safeFetch(`${API}/api/verify-payment`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               email: token,
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature
+              ...response
             })
           });
 
-          const result = await verify.json();
-
-          if (result.success) {
+          if (result?.success) {
             setNotifications(prev => [
               { text: "Payment Successful 💰" },
               ...prev
@@ -152,16 +168,18 @@ function App() {
 
       new window.Razorpay(options).open();
 
-    } catch (err) {
-      console.log(err);
+    } catch {
       alert("Payment failed ❌");
     }
   };
 
+  // ======================
+  // UI
+  // ======================
+
   return (
     <div className="app">
 
-      {/* SIDEBAR */}
       <div className="sidebar">
         <h2>🔥 AI Salon</h2>
 
@@ -189,7 +207,6 @@ function App() {
         </div>
       </div>
 
-      {/* MAIN */}
       <div className="main">
 
         <div className="topbar">
@@ -199,12 +216,10 @@ function App() {
           </button>
         </div>
 
-        {/* NOTIFICATIONS */}
-        {notifications.slice(0,3).map((n,i)=>(
+        {notifications.map((n,i)=>(
           <div key={i} className="notification">🔔 {n.text}</div>
         ))}
 
-        {/* DASHBOARD */}
         {page==="dashboard" && (
           <>
             <div className="cards">
@@ -225,12 +240,10 @@ function App() {
               <h3>🧠 AI Insights</h3>
               <p>Conversion: {conversion}%</p>
               <p>Revenue: ₹{revenue.reduce((s,r)=>s+r.amount,0)}</p>
-              <p>Tip: Reply faster = more bookings 🚀</p>
             </div>
           </>
         )}
 
-        {/* ANALYTICS */}
         {page==="analytics" && (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
@@ -243,7 +256,6 @@ function App() {
           </ResponsiveContainer>
         )}
 
-        {/* CALENDAR (UPGRADED) */}
         {page==="calendar" && (
           <div className="calendar">
             {Object.keys(groupedBookings).map((date,i)=>(
@@ -257,7 +269,6 @@ function App() {
           </div>
         )}
 
-        {/* PLAN */}
         {page==="plan" && (
           <div className="card">
             <h2>{data.plan}</h2>
