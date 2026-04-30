@@ -1,12 +1,10 @@
-// 🚀 FINAL ENTERPRISE AI SALON SaaS (NO GEMINI)
-// Smart Logic + Human-like AI + SaaS + Dashboard + Payments
+// 🚀 FINAL HUMAN-LEVEL AI SALON SAAS (STABLE)
 
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Razorpay = require("razorpay");
-const crypto = require("crypto");
 const cors = require("cors");
 
 const app = express();
@@ -42,7 +40,6 @@ let leads = loadJSON("leads.json", {});
 let bookings = loadJSON("bookings.json", []);
 let memory = loadJSON("memory.json", {});
 let revenue = loadJSON("revenue.json", []);
-let followups = loadJSON("followups.json", []);
 let paymentsPending = loadJSON("paymentsPending.json", []);
 
 function saveAll() {
@@ -52,7 +49,6 @@ function saveAll() {
   fs.writeFileSync("bookings.json", JSON.stringify(bookings, null, 2));
   fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
   fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
-  fs.writeFileSync("followups.json", JSON.stringify(followups, null, 2));
   fs.writeFileSync("paymentsPending.json", JSON.stringify(paymentsPending, null, 2));
 }
 
@@ -98,18 +94,17 @@ app.post("/api/login", (req, res) => {
 });
 
 // =====================================================
-// DASHBOARD APIs
+// DASHBOARD
 // =====================================================
 
 app.get("/api/client-data", (req, res) => {
   const email = req.headers.authorization;
 
-  const userLeads = leads[email] || [];
   const userBookings = bookings.filter(b => b.businessId === email);
   const userRevenue = revenue.filter(r => r.businessId === email);
 
   res.send({
-    leads: userLeads.length,
+    leads: (leads[email] || []).length,
     bookings: userBookings.length,
     revenue: userRevenue.reduce((s, r) => s + r.amount, 0),
     plan: users[email]?.plan,
@@ -127,20 +122,10 @@ app.get("/api/bookings", (req, res) => {
   res.send(bookings.filter(b => b.businessId === email));
 });
 
-app.get("/api/revenue", (req, res) => {
-  res.send(revenue);
-});
-
-app.get("/api/conversion", (req, res) => {
-  const email = req.headers.authorization;
-  const l = leads[email] || [];
-  const b = bookings.filter(x => x.businessId === email);
-  const conv = l.length ? ((b.length / l.length) * 100).toFixed(1) : 0;
-  res.send({ conversion: conv });
-});
+app.get("/api/revenue", (req, res) => res.send(revenue));
 
 // =====================================================
-// PAYMENT (SaaS)
+// PAYMENT
 // =====================================================
 
 app.post("/api/create-order", async (req, res) => {
@@ -162,74 +147,95 @@ app.post("/api/verify-payment", (req, res) => {
 });
 
 // =====================================================
-// AI ENGINE
+// 🧠 HUMAN AI ENGINE
 // =====================================================
 
 function normalize(msg) {
   return msg.toLowerCase()
-    .replace(/kya/g,"price")
-    .replace(/kitna/g,"price")
-    .replace(/book karna/g,"booking")
-    .replace(/kal/g,"tomorrow")
-    .replace(/aaj/g,"today");
+    .replace(/kya|kitna/g, "price")
+    .replace(/karwana|book karna/g, "booking");
 }
 
-function detectIntent(msg) {
-  msg = normalize(msg);
-
-  if (/hi|hello/.test(msg)) return "greeting";
-  if (/price|cost/.test(msg)) return "pricing";
-  if (/book|slot|appointment/.test(msg)) return "booking";
-  if (/time/.test(msg)) return "timing";
-
-  return "fallback";
+function detectService(msg, client) {
+  return Object.keys(client.services).find(s =>
+    msg.includes(s.toLowerCase())
+  );
 }
-
-function humanReply(type, client) {
-  const r = {
-    greeting: `Hey 👋 Welcome to ${client.name}!`,
-    pricing: `Sure 😊 Here are our services:`,
-    booking: `Nice choice 👍 Let’s book it.`,
-    fallback: `Tell me how I can help 😊`
-  };
-  return r[type];
-}
-
-// =====================================================
-// MAIN AI
-// =====================================================
 
 function getAI(userId, message, businessId) {
   const client = clients[businessId];
-  const intent = detectIntent(message);
+  const msg = normalize(message);
 
   if (!memory[userId]) {
-    memory[userId] = { visits: 0 };
+    memory[userId] = {
+      selectedService: null,
+      waitingForSlot: false
+    };
   }
 
-  memory[userId].visits++;
-
-  // Pricing
-  if (intent === "pricing") {
-    let txt = "";
-    Object.keys(client.services).forEach(s=>{
-      txt += `• ${s}: ₹${client.services[s]}\n`;
-    });
-    return humanReply("pricing", client) + "\n\n" + txt;
-  }
-
-  // Booking
-  if (intent === "booking") {
-    return humanReply("booking", client) + "\n\nAvailable slots:\n" +
-      client.availableSlots.join("\n");
-  }
+  const user = memory[userId];
 
   // Greeting
-  if (intent === "greeting") {
-    return humanReply("greeting", client);
+  if (/hi|hello|hey/.test(msg)) {
+    return `Hey 👋 Welcome to ${client.name}!`;
   }
 
-  return humanReply("fallback", client);
+  // Pricing
+  if (msg.includes("price")) {
+    let txt = "";
+    Object.keys(client.services).forEach(s => {
+      txt += `• ${s}: ₹${client.services[s]}\n`;
+    });
+
+    return `Sure 😊 Here are our services:\n\n${txt}`;
+  }
+
+  // Service selection
+  const service = detectService(msg, client);
+  if (service) {
+    user.selectedService = service;
+    user.waitingForSlot = true;
+
+    return `Nice choice 😊 ${service} is a great option.
+
+📅 Available slots:
+
+${client.availableSlots.join("\n")}
+
+Reply with time 👍`;
+  }
+
+  // Slot booking
+  if (user.waitingForSlot && /^\d{2}:\d{2}$/.test(message)) {
+    bookings.push({
+      phone: userId,
+      service: user.selectedService,
+      time: message,
+      businessId,
+      date: new Date()
+    });
+
+    revenue.push({
+      businessId,
+      amount: client.services[user.selectedService] || 300,
+      date: new Date()
+    });
+
+    user.waitingForSlot = false;
+
+    return `✅ Your ${user.selectedService} is booked at ${message}.
+
+See you soon 😊`;
+  }
+
+  // Booking intent
+  if (msg.includes("booking")) {
+    return `Which service would you like?
+
+${Object.keys(client.services).join("\n")}`;
+  }
+
+  return `Tell me what you need 😊`;
 }
 
 // =====================================================
@@ -265,8 +271,10 @@ app.post("/webhook", async (req, res) => {
       }
     );
 
+    saveAll();
+
   } catch (e) {
-    console.log(e.message);
+    console.log("ERROR:", e.message);
   }
 });
 
