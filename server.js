@@ -1,13 +1,16 @@
-// 🚀 FINAL HUMAN-LEVEL AI SALON SAAS (STABLE)
-
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Razorpay = require("razorpay");
 const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || "super-secret-ai-key";
+
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
@@ -24,7 +27,16 @@ const razorpay = new Razorpay({
 // DATABASE
 // =====================================================
 
-function loadJSON(file, fallback) {
+const DB = {
+  users: "users.json",
+  clients: "clients.json",
+  leads: "leads.json",
+  bookings: "bookings.json",
+  memory: "memory.json",
+  revenue: "revenue.json"
+};
+
+function load(file, fallback) {
   try {
     return fs.existsSync(file)
       ? JSON.parse(fs.readFileSync(file))
@@ -34,71 +46,81 @@ function loadJSON(file, fallback) {
   }
 }
 
-let users = loadJSON("users.json", {});
-let clients = loadJSON("clients.json", {});
-let leads = loadJSON("leads.json", {});
-let bookings = loadJSON("bookings.json", []);
-let memory = loadJSON("memory.json", {});
-let revenue = loadJSON("revenue.json", []);
-let paymentsPending = loadJSON("paymentsPending.json", []);
+let users = load(DB.users, {});
+let clients = load(DB.clients, {});
+let leads = load(DB.leads, {});
+let bookings = load(DB.bookings, []);
+let memory = load(DB.memory, {});
+let revenue = load(DB.revenue, []);
 
 function saveAll() {
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-  fs.writeFileSync("clients.json", JSON.stringify(clients, null, 2));
-  fs.writeFileSync("leads.json", JSON.stringify(leads, null, 2));
-  fs.writeFileSync("bookings.json", JSON.stringify(bookings, null, 2));
-  fs.writeFileSync("memory.json", JSON.stringify(memory, null, 2));
-  fs.writeFileSync("revenue.json", JSON.stringify(revenue, null, 2));
-  fs.writeFileSync("paymentsPending.json", JSON.stringify(paymentsPending, null, 2));
+  fs.writeFileSync(DB.users, JSON.stringify(users, null, 2));
+  fs.writeFileSync(DB.clients, JSON.stringify(clients, null, 2));
+  fs.writeFileSync(DB.leads, JSON.stringify(leads, null, 2));
+  fs.writeFileSync(DB.bookings, JSON.stringify(bookings, null, 2));
+  fs.writeFileSync(DB.memory, JSON.stringify(memory, null, 2));
+  fs.writeFileSync(DB.revenue, JSON.stringify(revenue, null, 2));
 }
-
-// =====================================================
-// ROUTES
-// =====================================================
-
-app.get("/", (req, res) => res.send("🔥 AI Salon SaaS Running"));
 
 // =====================================================
 // AUTH
 // =====================================================
 
-app.post("/api/register", (req, res) => {
-  const { email, password, businessName } = req.body;
+app.post("/api/register", async (req, res) => {
+  const { email, password, businessName, phoneId } = req.body;
 
-  users[email] = { password, plan: "free", expiresAt: null };
+  if (users[email]) return res.send({ error: "User exists" });
+
+  const hash = await bcrypt.hash(password, 10);
+
+  users[email] = { password: hash, plan: "free", expiresAt: null };
 
   clients[email] = {
-    name: businessName || "Salon",
+    name: businessName || "Elite Salon",
     services: {
-      Haircut: 300,
-      Facial: 800,
-      Beard: 200
+      haircut: 300,
+      facial: 800,
+      beard: 200
     },
     timings: "10 AM - 8 PM",
-    availableSlots: ["10:00","12:00","14:00","16:00","18:00"],
-    phone_number_id: process.env.PHONE_NUMBER_ID
+    availableSlots: ["10:00", "12:00", "14:00", "16:00", "18:00"],
+    phone_number_id: phoneId || process.env.PHONE_NUMBER_ID
   };
 
   saveAll();
   res.send({ success: true });
 });
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
+  const user = users[email];
 
-  if (!users[email] || users[email].password !== password) {
+  if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.send({ success: false });
   }
 
-  res.send({ success: true, token: email });
+  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "7d" });
+
+  res.send({ success: true, token });
 });
 
+function auth(req, res, next) {
+  const token = req.headers.authorization;
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.sendStatus(403);
+    req.email = decoded.email;
+    next();
+  });
+}
+
 // =====================================================
-// DASHBOARD
+// DASHBOARD APIs
 // =====================================================
 
-app.get("/api/client-data", (req, res) => {
-  const email = req.headers.authorization;
+app.get("/api/client-data", auth, (req, res) => {
+  const email = req.email;
 
   const userBookings = bookings.filter(b => b.businessId === email);
   const userRevenue = revenue.filter(r => r.businessId === email);
@@ -112,153 +134,165 @@ app.get("/api/client-data", (req, res) => {
   });
 });
 
-app.get("/api/live-leads", (req, res) => {
-  const email = req.headers.authorization;
-  res.send(leads[email] || []);
+app.get("/api/live-leads", auth, (req, res) => {
+  res.send(leads[req.email] || []);
 });
 
-app.get("/api/bookings", (req, res) => {
-  const email = req.headers.authorization;
-  res.send(bookings.filter(b => b.businessId === email));
+app.get("/api/bookings", auth, (req, res) => {
+  res.send(bookings.filter(b => b.businessId === req.email));
 });
 
-app.get("/api/revenue", (req, res) => res.send(revenue));
-
-// =====================================================
-// PAYMENT
-// =====================================================
-
-app.post("/api/create-order", async (req, res) => {
-  const order = await razorpay.orders.create({
-    amount: 99900,
-    currency: "INR"
-  });
-  res.send(order);
+app.get("/api/revenue", (req, res) => {
+  res.send(revenue);
 });
 
-app.post("/api/verify-payment", (req, res) => {
-  const { email } = req.body;
+app.get("/api/conversion", auth, (req, res) => {
+  const email = req.email;
 
-  users[email].plan = "pro";
-  users[email].expiresAt = new Date(Date.now() + 30*24*60*60*1000);
+  const totalLeads = (leads[email] || []).length;
+  const totalBookings = bookings.filter(b => b.businessId === email).length;
 
-  saveAll();
-  res.send({ success: true });
+  const conversion = totalLeads === 0
+    ? 0
+    : ((totalBookings / totalLeads) * 100).toFixed(1);
+
+  res.send({ conversion });
 });
 
 // =====================================================
-// 🧠 HUMAN AI ENGINE
+// AI ENGINE (WORKING)
 // =====================================================
 
-function normalize(msg) {
-  return msg.toLowerCase()
-    .replace(/kya|kitna/g, "price")
-    .replace(/karwana|book karna/g, "booking");
+function clean(text) {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
 }
 
-function detectService(msg, client) {
-  return Object.keys(client.services).find(s =>
-    msg.includes(s.toLowerCase())
-  );
+function detectService(msg, services) {
+  const map = {
+    haircut: ["haircut", "cut", "trim"],
+    beard: ["beard", "shave"],
+    facial: ["facial", "face"]
+  };
+
+  for (let s in services) {
+    const keys = map[s] || [s];
+    if (keys.some(k => msg.includes(k))) return s;
+  }
+
+  return null;
 }
 
-function getAI(userId, message, businessId) {
+function detectSlot(msg, slots) {
+  return slots.find(s => msg.includes(s.replace(":", "")) || msg.includes(s));
+}
+
+function AI(userId, message, businessId) {
   const client = clients[businessId];
-  const msg = normalize(message);
+  const msg = clean(message);
 
   if (!memory[userId]) {
-    memory[userId] = {
-      selectedService: null,
-      waitingForSlot: false
-    };
+    memory[userId] = { service: null, waiting: false };
   }
 
-  const user = memory[userId];
+  const session = memory[userId];
 
-  // Greeting
+  // lead
+  if (!leads[businessId]) leads[businessId] = [];
+  if (!leads[businessId].find(l => l.phone === userId)) {
+    leads[businessId].push({ phone: userId, message });
+  }
+
+  // greeting
   if (/hi|hello|hey/.test(msg)) {
-    return `Hey 👋 Welcome to ${client.name}!`;
+    return `Hey 👋 Welcome to ${client.name}!
+
+You can ask for:
+• Prices
+• Book appointment
+• Services`;
   }
 
-  // Pricing
-  if (msg.includes("price")) {
-    let txt = "";
-    Object.keys(client.services).forEach(s => {
-      txt += `• ${s}: ₹${client.services[s]}\n`;
-    });
-
-    return `Sure 😊 Here are our services:\n\n${txt}`;
+  // pricing
+  if (/price|cost|rate|kitna/.test(msg)) {
+    return Object.entries(client.services)
+      .map(([s, p]) => `${s}: ₹${p}`)
+      .join("\n");
   }
 
-  // Service selection
-  const service = detectService(msg, client);
+  // timing
+  if (/time|open|close/.test(msg)) {
+    return `🕒 ${client.timings}`;
+  }
+
+  // service
+  const service = detectService(msg, client.services);
+
   if (service) {
-    user.selectedService = service;
-    user.waitingForSlot = true;
+    session.service = service;
+    return `${service} costs ₹${client.services[service]}
 
-    return `Nice choice 😊 ${service} is a great option.
-
-📅 Available slots:
-
-${client.availableSlots.join("\n")}
-
-Reply with time 👍`;
+Reply "book" to continue`;
   }
 
-  // Slot booking
-  if (user.waitingForSlot && /^\d{2}:\d{2}$/.test(message)) {
+  // booking
+  if (msg.includes("book")) {
+    session.waiting = true;
+    return `Slots:\n${client.availableSlots.join("\n")}`;
+  }
+
+  // slot
+  const slot = detectSlot(msg, client.availableSlots);
+
+  if (session.waiting && slot) {
     bookings.push({
       phone: userId,
-      service: user.selectedService,
-      time: message,
+      service: session.service,
+      time: slot,
       businessId,
-      date: new Date()
+      date: new Date().toISOString().split("T")[0]
     });
 
     revenue.push({
       businessId,
-      amount: client.services[user.selectedService] || 300,
+      amount: client.services[session.service],
       date: new Date()
     });
 
-    user.waitingForSlot = false;
+    session.waiting = false;
 
-    return `✅ Your ${user.selectedService} is booked at ${message}.
-
-See you soon 😊`;
+    return `✅ Booked at ${slot}`;
   }
 
-  // Booking intent
-  if (msg.includes("booking")) {
-    return `Which service would you like?
-
-${Object.keys(client.services).join("\n")}`;
-  }
-
-  return `Tell me what you need 😊`;
+  return "Tell me service, price or booking 😊";
 }
 
 // =====================================================
-// WEBHOOK
+// WHATSAPP WEBHOOK
 // =====================================================
 
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 
   try {
-    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    const msg = value?.messages?.[0];
+
     if (!msg) return;
 
     const from = msg.from;
     const text = msg.text?.body || "";
+    const phoneId = value.metadata.phone_number_id;
 
-    const businessId = Object.keys(clients)[0];
-    const client = clients[businessId];
+    const businessId = Object.keys(clients).find(
+      id => clients[id].phone_number_id === phoneId
+    );
 
-    const reply = getAI(from, text, businessId);
+    if (!businessId) return;
+
+    const reply = AI(from, text, businessId);
 
     await axios.post(
-      `https://graph.facebook.com/v18.0/${client.phone_number_id}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneId}/messages`,
       {
         messaging_product: "whatsapp",
         to: from,
@@ -272,7 +306,6 @@ app.post("/webhook", async (req, res) => {
     );
 
     saveAll();
-
   } catch (e) {
     console.log("ERROR:", e.message);
   }
@@ -282,4 +315,6 @@ app.post("/webhook", async (req, res) => {
 // START
 // =====================================================
 
-app.listen(3000, () => console.log("🔥 SERVER RUNNING"));
+app.listen(PORT, () => {
+  console.log("🚀 SERVER RUNNING:", PORT);
+});
